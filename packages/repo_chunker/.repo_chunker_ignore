@@ -1,0 +1,6 @@
+# .repo_chunker_ignore
+# Patterns to exclude from repository chunking
+# Supports glob patterns (e.g., *.log, **/test/*, build/)
+# One pattern per line
+# Lines starting with # are comments
+
