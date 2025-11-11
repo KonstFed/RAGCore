@@ -8,6 +8,8 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.12"
+pydantic = "^2.12.4"
+pyyaml = "^6.0.3"
 
 [tool.poetry-workspace]
 members = [

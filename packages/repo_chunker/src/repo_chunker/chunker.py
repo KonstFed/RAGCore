@@ -1,10 +1,12 @@
-import chunk
 from pathlib import Path
 from typing import Iterator
 
 from pathspec import PathSpec
 from pathspec.patterns import GitWildMatchPattern
 from astchunk import ASTChunkBuilder
+from pydantic import BaseModel, Field
+
+from repo_chunker.models import ChunkerConfig, Chunk
 
 
 class RepoIterator:
@@ -120,59 +122,63 @@ class RepoIterator:
         yield from self.iterate_files(repo_path)
 
 
-class LanguageRouter:
+
+
+class RouterChunker:
     """Routes files to the appropriate language-specific chunker."""
 
-
-    language_extensions = {
-        ".py": "python",
-        ".pyi": "python",
-        ".ipynb": "python",
-        ".java": "java",
-        ".cs": "csharp",
-        ".csx": "csharp",
-        ".ts": "typescript",
-        ".tsx": "typescript",
-    }
-
-    DEFAULT_CONFIG = {
-        "max_chunk_size": 100,
-        "chunk_overlap": 10,
-        "chunk_expansion": True,
-        "metadata_template": "default",
-    }
-
-    def __init__(self, languages: list[str]=["python", "java", "csharp", "typescript"], config: dict=None):
-        config = config or self.DEFAULT_CONFIG
-        self.chunkers = {language: ASTChunkBuilder(**config, language=language) for language in languages}
+    def __init__(self, repoiter: RepoIterator, language_configs: dict[str, ChunkerConfig], config: dict=None):
+        self.repoiter = repoiter
+        self.chunkers = {}
+        for language in language_configs:
+            language_config = language_configs[language]
+            chunker = ASTChunkBuilder(**language_config.model_dump())
+            for extension in language_config.extensions:
+                self.chunkers[extension] = chunker
 
 
-
-    def route(self, file_path: Path) -> Path:
+    def chunk_file(self, file_path: Path) -> list[Chunk]:
         """Route a file to the appropriate language-specific chunker."""
-        language = self.language_extensions.get(file_path.suffix, "unknown")
+        chunker = self.chunkers.get(file_path.suffix, None)
 
-        if language == "unknown":
-            # TODO write chunking for docs and not code
-            return None
+        if chunker == None:
+            # this is not a code file
+            # TODO write chunking for docs
+            return []
 
-        chunker = self.chunkers[language]
         with file_path.open("r") as f:
             content = f.read()
-        return chunker.chunkify(content)
+
+        return [Chunk.model_validate(chunk) for chunk in chunker.chunkify(content)]
+
+    def chunk_repo(self, repo_path: Path) -> list[Chunk]:
+        """Chunk a repository."""
+        chunks = []
+        for file_path in self.repoiter(repo_path):
+            file_path = repo_path / file_path
+            chunks.extend(self.chunk_file(file_path))
+        return chunks
+
+
+class RouterChunkerConfig(BaseModel):
+    chunkers: dict[str, ChunkerConfig]
+
+    def create(self) -> RouterChunker:
+        repoiter = RepoIterator()
+        return RouterChunker(repoiter=repoiter, language_configs=self.chunkers)
 
 
 if __name__ == "__main__":
-    from pathlib import Path
+    from repo_chunker.config_utils import load_config
 
-    repo_path = Path("/Users/konstantinfedorov/Documents/itmo_study/intro_to_llm/repoqa/RAGCore")
-    chunker = RepoIterator()
-    router = LanguageRouter()
-    print("Files to be processed in repo:")
-    for file in chunker(repo_path):
-        print("A" * 10, file)
-        res = router.route(file)
-        if res is not None:
-            print(res)
-
-
+    router_config = load_config(
+        RouterChunkerConfig,
+        Path(__file__).parent / "chunk_config_example.yaml"
+    )
+    router_chunker = router_config.create()
+    chunks = router_chunker.chunk_repo(Path(__file__).parent.parent)
+    print("Extracted chunks: ", len(chunks))
+    idx = 0
+    print("----------------EXAMPLE----------------")
+    print(chunks[idx].content)
+    print("----------------EXAMPLE END----------------")
