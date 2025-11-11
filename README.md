@@ -1,32 +1,54 @@
-# Monorepo RAG Core
+# RAG Core
 
-Это монорепозиторий для проекта RAG Core.
+Monorepo для проекта RAGCore.
 
-## Архитектура репозитория
+## Структура проекта
 
-В репозитории используется монорепо-структура с несколькими пакетами в директории `packages`. Сейчас реализован один пакет:
-
-- `packages/repo_chunker` — для чанкирования репозиториев.
-
-Разные смысловые модули кода лучше ложить в отдельные модули: чтобы легче писать вместе.
-
-Управление зависимостями и пакетами осуществляется через [Poetry](https://python-poetry.org/), с использованием workspace (рабочих пространств Poetry), что позволяет централизованно управлять зависимостями для всех под-проектов.
-
-## Как работать с репозиторием
-
-### Установка зависимостей для всего монорепозитория
-
-Все зависимости для всех пакетов можно установить одной командой:
-
-```bash
-poetry install
+```
+RAGCore/
+├── packages/
+│   └── repochunker/          # Пакет для чанкирования репозиториев
+│       ├── src/
+│       │   └── repochunker/
+│       │       ├── repoiter.py      # Итератор по файлам репозитория
+│       │       ├── chunker.py      # Роутер для чанкирования
+│       │       ├── models.py       # Pydantic модели
+│       │       └── config_utils.py  # Утилиты для работы с конфигурацией
+│       └── pyproject.toml
+└── pyproject.toml            # Конфигурация workspace
 ```
 
-### Работа с отдельным пакетом
+## Установка
 
-Если нужно поработать только с определённым пакетом (например, `repo_chunker`), переходите в папку этого пакета и устанавливайте зависимости отдельно:
+Установите [uv](https://github.com/astral-sh/uv):
 
 ```bash
-cd packages/repo_chunker
-poetry install
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
+
+Установка зависимостей
+
+```bash
+uv sync
+```
+
+Эта команда установит все зависимости и workspace-пакеты в editable режиме.
+
+### Использование
+
+Быстрая проверка что работает
+
+```bash
+cd packages/repochunker/src/repochunker
+uv run python chunker.py
+```
+
+```python
+from repochunker.chunker import RouterChunkerConfig
+from repochunker.config_utils import load_config
+
+config = load_config(RouterChunkerConfig, "path/to/config.yaml")
+router = config.create()
+chunks = router.chunk_repo(Path("/path/to/repo"))
+```
+

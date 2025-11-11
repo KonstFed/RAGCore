@@ -56,7 +56,7 @@ class RouterChunkerConfig(BaseModel):
 
 
 if __name__ == "__main__":
-    from repo_chunker.config_utils import load_config
+    from repochunker.config_utils import load_config
 
     router_config = load_config(
         RouterChunkerConfig, Path(__file__).parent / "chunk_config_example.yaml"
