@@ -1,22 +1,19 @@
-[tool.poetry]
-name = "ragcore-monorepo"
+[project]
+name = "ragcore"
 version = "0.1.0"
-description = "RAG Core monorepo"
-authors = ["KonstFed <konstfed12@gmail.ru>"]
-readme = "README.md"
-package-mode = false
-
-[tool.poetry.dependencies]
-python = "^3.12"
-pydantic = "^2.12.4"
-pyyaml = "^6.0.3"
-
-[tool.poetry-workspace]
-members = [
-    "packages/repo_chunker",
+description = "RAGCore monorepo"
+requires-python = ">=3.12"
+dependencies = [
+    "ipykernel>=7.1.0",
+    "pydantic>=2.12.4",
+    "pyyaml>=6.0.3",
+    "repochunker",
 ]
 
-[build-system]
-requires = ["poetry-core>=2.0.0"]
-build-backend = "poetry.core.masonry.api"
+[tool.uv.sources]
+repochunker = { workspace = true }
 
+[tool.uv.workspace]
+members = [
+    "packages/*",
+]
