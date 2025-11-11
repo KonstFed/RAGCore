@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "ragcore-monorepo"
+version = "0.1.0"
+description = "RAG Core monorepo"
+authors = [
+    {name = "KonstFed", email = "konstfed12@gmail.ru"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+
+[tool.poetry.group.dev.dependencies]
+
+[tool.poetry-workspace]
+members = [
+    "packages/repo_chunker",
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
+
