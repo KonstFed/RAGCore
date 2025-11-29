@@ -1,0 +1,15 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+database:
+  vector_db_url: "http://localhost:6333"
+  collection_name: "github_code_chunks"
+
+llm:
+  default_provider: "openai"
+  api_key: "${oc.env:LLM_API_KEY, 'sk-placeholder'}"
+
+paths:
+  temp_repo_storage: "/tmp/repos"
+  openapi_spec: "api/api.yaml" # Путь к файлу API, который вы прислали

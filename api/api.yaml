@@ -221,14 +221,17 @@ components:
           type: array
           items:
             type: string
+            enum: ["tests/", "*.lock", "__pycache__", ".venv", "build"]
           description: Список паттернов .gitignore для исключения файлов.
-          enum: ["tests/", "*.lock", "__pycache__", ".venv", "build"]
 
     IndexRequest:
       type: object
       required:
         - repo_url
+        - meta
       properties:
+        meta:
+          $ref: '#/components/schemas/MetaRequest'
         repo_url:
           type: string
           format: uri
@@ -619,7 +622,7 @@ components:
           $ref: '#/components/schemas/QueryRewriterConfig'
         filtering:
           $ref: '#/components/schemas/FilteringConfig'
-        retirever:
+        retriever:
           $ref: '#/components/schemas/RetrieverConfig'
         reranker:
           $ref: '#/components/schemas/RerankerConfig'
