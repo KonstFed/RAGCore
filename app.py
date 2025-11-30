@@ -7,8 +7,7 @@ from uuid import uuid4
 @st.cache_resource
 def get_assistant():
     return Assistant(
-        service_cfg_path="configs/deployment_config.yaml",
-        swagger_path="api/api.yaml"
+        service_cfg_path="configs/deployment_config.yaml"
     )
 
 assistant = get_assistant()
@@ -24,32 +23,33 @@ with tab_index:
 
     if st.button("Индексировать") and repo_url:
 
-        request = {
+        request = { # IndexRequest
             "meta": {
                 "request_id": str(uuid4())
             },
             "repo_url": repo_url,
-            "branch": "main",
-            "config": {
-                "chunker_config": {
-                    "max_chunk_size": 1000,
-                    "chunk_overlap": 50,
-                    "extensions": [".py", ".ipynb", ".cpp", ".h", ".java", ".ts", ".tsx", ".cs"],
-                    "chunk_expansion": True,
-                    "metadata_template": "default"
-                },
-                "embedding_config": {
-                    "model_name": "qwen3-embedding-0.6b",
-                    "dimensions": 1024,
-                    "max_tokens": 8192
-                },
-                "exclude_patterns": ["*.lock", "__pycache__", ".venv", "build"]
-            }
+            "branch": "main"
         }
 
-        with st.spinner('Думаю...'):
+        config = { # IndexConfig
+            "chunker_config": {
+                "max_chunk_size": 1000,
+                "chunk_overlap": 50,
+                "extensions": [".py", ".ipynb", ".cpp", ".h", ".java", ".ts", ".tsx", ".cs"],
+                "chunk_expansion": True,
+                "metadata_template": "default"
+            },
+            "embedding_config": {
+                "model_name": "qwen3-embedding-0.6b",
+                "dimensions": 1024,
+                "max_tokens": 8192
+            },
+            "exclude_patterns": ["*.lock", "__pycache__", ".venv", "build"]
+        }
+
+        with st.spinner('Индексирую...'):
             try:
-                response = asyncio.run(assistant.index(request))
+                response = asyncio.run(assistant.index(request, config))
                 st.success(f"Репозиторий с request_id={response.job_id} в статусе '{response.status}'")
             except Exception as e:
                 st.error(f"Произошла ошибка: {e}")
@@ -61,7 +61,7 @@ with tab_chat:
 
     if st.button("Спросить") and question and repo_url:
 
-        request = {
+        request = { # SearchRequest
             "meta": {
                 "request_id": str(uuid4())
             },
@@ -69,16 +69,27 @@ with tab_chat:
                 "messages": [
                     {
                         "role": "user",
-                        "content": "Я задаю какой-то вопрос"
+                        "content": question
                     }
                 ]
             },
             "repo_url": repo_url
         }
 
+        config = { # SearchConfig
+            "query_preprocessor": {"enabled": True},
+            "query_rewriter": {"enabled": True},
+            "retriever": {"enabled": True},
+            "filtering": {"enabled": True},
+            "reranker": {"enabled": True},
+            "context_expansion": {"enabled": True},
+            "qa": {"enabled": True},
+            "query_postprocessor": {"enabled": False}
+        }
+
         with st.spinner('Думаю...'):
             try:
-                response = asyncio.run(assistant.query(request))
+                response = asyncio.run(assistant.query(request, config))
 
                 st.markdown(response.answer)
 

@@ -5,19 +5,19 @@ from src.search.search_engine import SearchEngine
 from src.core.schemas import (
     IndexRequest,
     IndexJobResponse,
+    IndexConfig,
     QueryRequest,
-    QueryResponse
+    QueryResponse,
+    SearchConfig
 )
 from typing import Any, Dict, List, Tuple
-from src.utils.validator import APISchemaValidator
 from src.utils.logger import get_logger
 
 
 class Assistant:
     def __init__(
         self,
-        service_cfg_path: str = "configs/deployment_config.yaml",
-        swagger_path: str = "api/api.yaml"
+        service_cfg_path: str = "configs/deployment_config.yaml"
     ):
         self.logger = get_logger(self.__class__.__name__)
 
@@ -25,17 +25,19 @@ class Assistant:
         self.searcher = SearchEngine(service_cfg_path)
         # self.agent = CodeAgent(service_cfg_path)
 
-        self.validator = APISchemaValidator(swagger_path, self.logger)  # TODO удалить, решили использовать pydantic
-
-    async def index(self, request: Dict[str, Any]) -> IndexJobResponse:
+    async def index(self, request: Dict[str, Any], config: Dict[str, Any]) -> IndexJobResponse:
         "Функция индексации репозитория с GitHub."
-        self.validator.validate_data(request, "IndexRequest") # TODO удалить, решили использовать pydantic
-        response = await self.enrichment.run_indexing_pipeline(IndexRequest(**request))
+        response = await self.enrichment.run_indexing_pipeline(
+            IndexRequest(**request),
+            IndexConfig(**config)
+        )
         return response
 
-    async def query(self, request: Dict[str, Any]) -> QueryResponse:
+    async def query(self, request: Dict[str, Any], config: Dict[str, Any]) -> QueryResponse:
         "Функция генерации ответа на вопрос пользователя."
-        self.validator.validate_data(request, "QueryRequest")  # TODO удалить, решили использовать pydantic
-        response = await self.searcher.predict(QueryRequest(**request))
+        response = await self.searcher.predict(
+            QueryRequest(**request),
+            SearchConfig(**config)
+        )
         return response
 

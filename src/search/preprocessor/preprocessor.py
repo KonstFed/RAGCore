@@ -1,9 +1,11 @@
 from typing import Any, Dict, List, Tuple
-from src.core.schema import (
+from src.core.schemas import (
     QueryRequest,
+    SearchConfig,
     ContentBlockingSettings,
     TextSanitizationSettings
 )
+from src.utils.logger import get_logger
 
 
 class Preprocessor:
@@ -12,13 +14,15 @@ class Preprocessor:
     Отвечает за нормализацию текста, удаление чувствительных данных и блокировку запрещенного контента.
     """
     def __init__(self):
+        self.logger = get_logger(self.__class__.__name__)
         pass # TODO реализовать инит - подтягивание словарей, default регулярок и т.д.
 
-    def pipeline(self, request: QueryRequest) -> QueryRequest:
-        if not request.search_config or not request.search_config.query_preprocessor:
+    def pipeline(self, request: QueryRequest, config: SearchConfig) -> QueryRequest:
+        self.logger.info("Run preprocessor pipeline.")
+        if not config or not config.query_preprocessor:
             return request
 
-        config = request.search_config.query_preprocessor
+        config = config.query_preprocessor
 
         last_message = request.query.messages[-1]
         content = last_message.content
@@ -51,6 +55,7 @@ class Preprocessor:
         last_message.content = content
         request.query.messages[-1] = last_message
 
+        self.logger.info("Successful finished preprocessor pipeline.")
         return request
 
     def _check_blacklist(self, text: str, settings: ContentBlockingSettings) -> bool:

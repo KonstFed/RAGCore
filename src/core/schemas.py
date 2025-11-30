@@ -325,7 +325,6 @@ class QueryRequest(BaseModel):
     repo_url: str = Field(..., description="URL репозитория.")
     meta: MetaRequest
     query: QueryObject
-    search_config: Optional[SearchConfig] = None
     stream: bool = False
 
 

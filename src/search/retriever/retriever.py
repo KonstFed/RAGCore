@@ -1,11 +1,13 @@
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from src.core.db import VectorDBClient
-from src.core.schema import (
+from src.core.schemas import (
     QueryRequest,
+    SearchConfig,
     Chunk,
     FilterNode
 )
+from src.utils.logger import get_logger
 
 
 class Retriever:
@@ -13,46 +15,50 @@ class Retriever:
     Класс поиска чанков (Retrieval) и расширения контекста (Expansion).
     """
     def __init__(self):
+        self.logger = get_logger(self.__class__.__name__)
         pass # TODO реализовать коннект к VectorDBClient
 
-    def retrieval(self, request: QueryRequest) -> QueryRequest:
+    def retrieval(self, request: QueryRequest, config: SearchConfig) -> QueryRequest:
         """
         Выполняет поиск релевантных чанков в базе данных.
         """
+        self.logger.info("Run retriever search.")
         if request.query.sources is None:
             request.query.sources = []
 
-        if not request.search_config or not request.search_config.retriever:
+        if not config or not config.retriever:
             return request
 
-        config = request.search_config.retriever
+        retriever_config = config.retriever
         query_text = request.query.messages[-1].content
 
         # TODO поход в VectorDBClient
 
-        if request.search_config.filtering and request.search_config.filtering.enabled:
+        if config.filtering and config.filtering.enabled:
             request.query.sources = self._apply_filtering(
                 request.query.sources,
-                request.search_config.filtering.filter
+                config.filtering.filter
             )
 
+        self.logger.info("Successful finished retriever search.")
         return request
 
-    def expansion(self, request: QueryRequest) -> QueryRequest:
+    def expansion(self, request: QueryRequest, config: SearchConfig) -> QueryRequest:
         """
         Расширяет найденные чанки (добавляет строки кода до и после).
         """
-        if not request.search_config or \
-           not request.search_config.context_expansion or \
-           not request.search_config.context_expansion.enabled:
+        self.logger.info("Run context expansion.")
+        if not config or \
+           not config.context_expansion or \
+           not config.context_expansion.enabled:
             return request
 
-        config = request.search_config.context_expansion
+        config = config.context_expansion
         if not request.query.sources:
             return request
 
         # TODO реализовать запрос в VectorDBClient на подтягивание соседних чанков
-
+        self.logger.info("Successful finished context expansion.")
         return request
 
     def _apply_filtering(self, chunks: List[Chunk], filter_node: Optional[FilterNode]) -> List[Chunk]:

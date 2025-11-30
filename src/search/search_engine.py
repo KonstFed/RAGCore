@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 from src.core.service import BaseService
-from src.core.schemas import QueryRequest, QueryResponse, Chunk
+from src.core.schemas import QueryRequest, QueryResponse, Chunk, SearchConfig
 from src.search.preprocessor import Preprocessor
 from src.search.postprocessor import Postprocessor
 from src.search.rewriter import QueryRewriter
@@ -28,49 +28,49 @@ class SearchEngine(BaseService):
         self.logger.info("SearchEngine service initialized.")
 
     def _init_preprocessor(self) -> Preprocessor:
-        return Preprocessor
+        return Preprocessor()
 
     def _init_query_rewriter(self) -> QueryRewriter:
-        return QueryRewriter
+        return QueryRewriter()
 
     def _init_retriever(self) -> Retriever:
-        return Retriever
+        return Retriever()
 
     def _init_reranker(self) -> Reranker:
-        return Reranker
+        return Reranker()
 
     def _init_qa(self) -> QAGenerator:
-        return QAGenerator
+        return QAGenerator()
 
     def _init_postprocessor(self) -> Postprocessor:
-        return Postprocessor
+        return Postprocessor()
 
-    async def predict(self, request: QueryRequest) -> QueryResponse:
+    async def predict(self, request: QueryRequest, config: SearchConfig) -> QueryResponse:
         """
         Пайплайн обработки пользовательского запроса.
         """
         start_detatime = datetime.now()
 
         try:
-            response = self.preprocessor.pipeline(request)
+            response = self.preprocessor.pipeline(request, config)
 
-            response = self.query_rewriter.pipeline(response)
+            response = await self.query_rewriter.pipeline(response, config)
 
-            response = self.retriever.retrieval(response)
+            response = self.retriever.retrieval(response, config)
 
-            response = self.reranker.pipeline(response)
+            response = await self.reranker.pipeline(response, config)
 
-            response = self.retriever.expansion(response)
+            response = self.retriever.expansion(response, config)
 
-            response = await self.qa.pipeline(response)
+            response = await self.qa.pipeline(response, config)
 
-            response = self.postprocessor.pipeline(response)
+            response = self.postprocessor.pipeline(response, config)
 
-            response.update({ # TODO подумать, как лучше сделать из postprocessor
+            response.update({ # TODO подумать, как лучше сделать формирование финального ответа
                 "meta": {
                     "request_id": request.meta.request_id,
                     "start_detatime": start_detatime,
-                    "start_detatime": datetime.now(),
+                    "end_datetime": datetime.now(),
                     "status": "done"
                 }
             })
@@ -78,51 +78,5 @@ class SearchEngine(BaseService):
             self.logger.info(f"Job {request.meta.request_id} completed successfully.")
         except Exception as e:
             self.logger.exception(f"Critical error in job {request.meta.request_id}")
-
-        # TODO костыль
-        response = {
-            "meta": {
-                "request_id": request.meta.request_id,
-                "start_detatime": start_detatime,
-                "end_datetime": datetime.now(),
-                "status": "done"
-            },
-            "messages": request.query.messages,
-            "answer": "Какой-то ответ сгенерированный от LLM, который прошёл построцессиг.",
-            "sources": [
-                {
-                    "content": "Чанк 1",
-                    "metadata": {
-                        "chunk_id": "cdb68191-fbb0-4d35-ba8a-3d9ec19a4f29",
-                        "filepath": "src/utils/helper.py",
-                        "file_name": "helper.py",
-                        "chunk_size": 390,
-                        "line_count": 20,
-                        "start_line_no": 0,
-                        "end_line_no": 20,
-                        "node_count": 0,
-                        "language": "python"
-                    }
-                },
-                {
-                    "content": "Чанк 2",
-                    "metadata": {
-                        "chunk_id": "cdb68191-fbb0-4d35-ba8a-3d9ec19a4f29",
-                        "filepath": "src/utils/helper.py",
-                        "file_name": "helper.py",
-                        "chunk_size": 100,
-                        "line_count": 10,
-                        "start_line_no": 20,
-                        "end_line_no": 30,
-                        "node_count": 0,
-                        "language": "python"
-                    }
-                }
-            ],
-            "llm_usage": {
-                "prompt_tokens": 10000,
-                "completion_tokens": 102030
-            }
-        }
 
         return QueryResponse(**response)
