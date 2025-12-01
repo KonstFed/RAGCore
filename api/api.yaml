@@ -1,0 +1,716 @@
+openapi: 3.0.3
+info:
+  title: GitHub RAG Service API
+  description: API сервиса для индексации GitHub репозиториев и ответов на вопросы по коду команды RAGCore.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000/v1
+    description: Local development server
+
+paths:
+  /index:
+    post:
+      summary: Индексация репозитория
+      description: Запускает процесс клонирования, парсинга (astchunk), создания эмбеддингов и сохранения в векторную базу.
+      operationId: indexRepository
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexRequest'
+      responses:
+        '202':
+          description: Процесс индексации запущен успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexJobResponse'
+        '400':
+          description: Неверная конфигурация или URL.
+
+  /index/{job_id}:
+    get:
+      summary: Статус индексации
+      description: Получение статуса задачи по индексации.
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Текущий статус задачи.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexJobStatus'
+
+  /query:
+    post:
+      summary: Поиск и генерация ответа
+      description: Поиск релевантных чанков кода и генерация ответа LLM на основе контекста.
+      operationId: queryRepository
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Ответ получен успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+
+components:
+  schemas:
+    MetaRequest:
+      type: object
+      description: Метаданные запроса.
+      required:
+        - request_id
+      properties:
+        request_id:
+          type: string
+          format: uuid
+          description: Уникальный id запроса (должен совпадать с ответом).
+
+    MetaResponse:
+      type: object
+      description: Метаданные ответа.
+      required:
+        - request_id
+        - start_detatime
+        - end_datetime
+        - status
+      properties:
+        request_id:
+          type: string
+          format: uuid
+          description: Уникальный id ответа (должен совпадать с запросом).
+        start_detatime:
+          type: string
+          format: "date-time"
+          pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$"
+        end_detatime:
+          type: string
+          format: "date-time"
+          pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$"
+        status:
+          type: string
+          enum: ["error", "done", "timeout"]
+
+    ChunkMetadata:
+      type: object
+      description: Метаданные чанка кода.
+      required:
+        - chunk_id
+        - filepath
+        - file_name
+        - start_line_no
+        - end_line_no
+      properties:
+        chunk_id:
+          type: string
+          format: uuid
+          description: Уникальный id чанка.
+        filepath:
+          type: string
+          description: Полный путь к файлу внутри репозитория.
+          example: "src/utils/helpers.py"
+        file_name:
+          type: string
+          description: Полное имя файла, вместе с расширением.
+          example: "helpers.py"
+        chunk_size:
+          type: integer
+          description: Размер чанка в символах.
+        line_count:
+          type: integer
+          description: Количество строк в чанке.
+        start_line_no:
+          type: integer
+          description: Номер первой строки кода в оригинальном файле.
+        end_line_no:
+          type: integer
+          description: Номер последней строки кода.
+        node_count:
+          type: integer
+          description: Количество AST узлов в чанке (специфично для astchunk).
+        language:
+          type: string
+          enum: ["python", "go", "java", "cpp", "java-script", "c-sharp", "type-script"]
+          description: Язык программирования (python, go, js, и т.д.).
+
+    Chunk:
+      type: object
+      description: Единица кода после обработки.
+      required:
+        - content
+        - metadata
+      properties:
+        content:
+          type: string
+          description: Исходный код чанка (сырой текст).
+        metadata:
+          $ref: '#/components/schemas/ChunkMetadata'
+        retrieval_relevance_score:
+          type: number
+          format: float
+          description: Оценка релевантности (similarity score) при поиске.
+        reranker_relevance_score:
+          type: number
+          format: float
+          description: Оценка релевантности (reranker score) при переранжировании.
+
+    AstChunkerConfig:
+      type: object
+      description: Конфигурация библиотеки astchunk.
+      properties:
+        max_chunk_size:
+          type: integer
+          default: 1000
+          description: Максимальное количество токенов/символов в чанке.
+        chunk_overlap:
+          type: integer
+          default: 50
+          description: Перекрытие между чанками.
+        chunk_expansion:
+          type: boolean
+          default: true
+          description: Включает ли astchunk расширение контекста до границ функциональных блоков.
+        metadata_template:
+          type: string
+          default: "default"
+        extensions:
+          type: array
+          items:
+            type: string
+            enum: [".py", ".ipynb", ".cpp", ".h", ".java", ".ts", ".tsx", ".cs"]
+          description: Список расширений подлежащих индексированию.
+
+    EmbeddingConfig:
+      type: object
+      required:
+        - model_name
+      properties:
+        model_name:
+          type: string
+          enum: ["e5-large", "qwen3-embedding-0.6b", "qwen3-embedding-4b"]
+          default: "qwen3-embedding-0.6b"
+        dimensions:
+          type: integer
+          default: 1024
+        max_tokens:
+          type: integer
+          default: 8192
+
+    IndexConfig:
+      type: object
+      properties:
+        chunker_config:
+          $ref: '#/components/schemas/AstChunkerConfig'
+        embedding_config:
+          $ref: '#/components/schemas/EmbeddingConfig'
+        exclude_patterns:
+          type: array
+          items:
+            type: string
+            enum: ["tests/", "*.lock", "__pycache__", ".venv", "build"]
+          description: Список паттернов .gitignore для исключения файлов.
+
+    IndexRequest:
+      type: object
+      required:
+        - repo_url
+        - meta
+      properties:
+        meta:
+          $ref: '#/components/schemas/MetaRequest'
+        repo_url:
+          type: string
+          format: uri
+          example: "https://github.com/owner/repo"
+        branch:
+          type: string
+          default: "main"
+        config:
+          $ref: '#/components/schemas/IndexConfig'
+
+    IndexJobResponse:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, processing]
+
+    IndexJobStatus:
+      type: object
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum: [queued, processing, completed, failed]
+        chunks_processed:
+          type: integer
+        error:
+          type: string
+
+    LLMGenerationParams:
+      type: object
+      description: Гиперпараметры для настройки генерации LLM.
+      properties:
+        temperature:
+          type: number
+          format: float
+          default: 0.1
+          minimum: 0.0
+          maximum: 2.0
+          description: Степень "креативности". 0 - детерминированный ответ, выше - более случайный. Для RAG по коду рекомендуется низкое значение (0.0 - 0.2).
+        max_tokens:
+          type: integer
+          nullable: true
+          description: Максимальное количество токенов в ответе. Если null, используется лимит модели.
+          example: 4096
+        top_p:
+          type: number
+          format: float
+          default: 1.0
+          minimum: 0.0
+          maximum: 1.0
+          description: Nucleus sampling. Альтернатива температуре.
+        frequency_penalty:
+          type: number
+          format: float
+          default: 0.0
+          minimum: -2.0
+          maximum: 2.0
+          description: Штраф за частоту повторения токенов.
+        presence_penalty:
+          type: number
+          format: float
+          default: 0.0
+          minimum: -2.0
+          maximum: 2.0
+          description: Штраф за повторное появление токенов (стимулирует новые темы).
+
+    LLMConfig:
+      type: object
+      description: Конфигурация LLM.
+      required:
+        - provider
+        - model_name
+      properties:
+        provider:
+          type: string
+          description: Провайдер API или тип бэкенда.
+          enum: ["openai", "azure", "mistral", "anthropic", "google", "ollama", "vllm", "custom"]
+          default: "openai"
+        model_name:
+          type: string
+          description: Название модели (или deployment name для Azure).
+          enum: ["GigaChat-2-Max", "Qwen3-4B-Instruct-2507", "mistral-large-latest"]
+          default: "Qwen3-4B-Instruct-2507"
+        base_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Базовый URL API. Обязателен для Ollama, vLLM или прокси.
+          example: "http://localhost:11434/v1"
+        system_prompt:
+          type: string
+          nullable: true
+          description: Базовый системный промпт. Если не указан, используется дефолтный промпт RAG-системы.
+          example: "You are an expert software engineer. Answer strictly based on the provided context."
+          default: "Ты - ассистент для ответов на вопросы по репозиторию с кодом. Тебе дан диалог с пользователем и релевантные контексты по некоторому репозиторию."
+        parameters:
+          $ref: '#/components/schemas/LLMGenerationParams'
+        extra_options:
+          type: object
+          additionalProperties: true
+          description: Дополнительные параметры, специфичные для конкретного провайдера.
+          example:
+            timeout: 60
+            retry_count: 3
+
+    TextSanitizationSettings:
+      type: object
+      description: Настройки для поиска и замены чувствительных данных или нежелательных слов.
+      properties:
+        enabled:
+          type: boolean
+          description: Включить или выключить модуль очистки.
+          default: true
+        regex_patterns:
+          type: array
+          description: Список регулярных выражений. Найденные совпадения будут заменены на заглушку.
+          items:
+            type: string
+            format: regex
+            example: "^(sk-[a-zA-Z0-9]{48})$" # Пример: поиск API ключей
+        stop_words:
+          type: array
+          description: Список конкретных слов или фраз (case-insensitive), которые нужно скрыть.
+          items:
+            type: string
+            example: "confidential"
+        replacement_token:
+          type: string
+          description: Строка-заглушка, на которую заменяются найденные паттерны и стоп-слова.
+          default: "[REDACTED]"
+
+    ContentBlockingSettings:
+      type: object
+      description: Настройки полной замены ответа/запроса при обнаружении нежелательных паттернов.
+      properties:
+        enabled:
+          type: boolean
+          default: false
+        trigger_patterns:
+          type: array
+          description: Список RegExp паттернов. Если найден ХОТЯ БЫ ОДИН, весь текст заменяется.
+          items:
+            type: string
+            format: regex
+            example: "(ignore previous instructions|system prompt)"
+        fallback_message:
+          type: string
+          description: Текст, который полностью заменит оригинальное сообщение.
+          default: "Content blocked due to policy violation."
+          example: "Извините, я не могу обработать этот запрос по соображениям безопасности."
+
+    RegexSubstitutionRule:
+      type: object
+      required:
+        - pattern
+        - replacement
+      properties:
+        pattern:
+          type: string
+          format: regex
+          description: Регулярное выражение, которое нужно найти.
+          example: "(\\n){3,}" # Поиск 3 и более переносов строк
+        replacement:
+          type: string
+          description: Строка, на которую нужно заменить найденный паттерн.
+          example: "\n\n"
+
+    QueryPreprocessorConfig:
+      type: object
+      properties:
+        max_length:
+          type: integer
+          default: 5000
+        normalize_whitespace:
+          type: boolean
+          default: true
+        sanitization:
+          $ref: '#/components/schemas/TextSanitizationSettings'
+        custom_substitutions:
+          type: array
+          description: Список правил для замены части текста по RegExp на заданное значение.
+          items:
+            $ref: '#/components/schemas/RegexSubstitutionRule'
+        blacklist:
+          $ref: '#/components/schemas/ContentBlockingSettings'
+
+    QueryPostprocessorConfig:
+      type: object
+      properties:
+        format_markdown:
+          type: boolean
+          default: true
+          description: Убедиться, что ответ является валидным Markdown (особенно для блоков кода).
+        add_citations:
+          type: boolean
+          default: false
+          description: Добавлять ли ссылки на файлы репозитория в конце ответа.
+        sanitization:
+          $ref: '#/components/schemas/TextSanitizationSettings'
+        custom_substitutions:
+          type: array
+          description: Исправление артефактов генерации (например, лишние пробелы или специфичные токены).
+          items:
+            $ref: '#/components/schemas/RegexSubstitutionRule'
+        blacklist:
+          $ref: '#/components/schemas/ContentBlockingSettings'
+          description: Если модель сгенерировала запрещенный контент, полностью заменить ответ заглушкой.
+
+    QueryRewriterConfig:
+      type: object
+      description: Настройки модуля генерации финального ответа с помощью LLM.
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          default: false
+        llm_config:
+          $ref: '#/components/schemas/LLMConfig'
+        templates:
+          type: object
+          properties:
+            user_prompt_template:
+              type: string
+              description: Пользовательский шаблон для формирования зпроса с найденными контекстами.
+              default: "Диалог с пользователем: {messages}\nНайденные источники:\n{contexts}"
+            context_template:
+              type: string
+              description: Контекстный шаблон для подставления полей чанков.
+              default: "Filepath: {metadata.filepath}, start line number: {metadata.start_line_no}, end line number: {metadata.end_line_no}\n\n{content}"
+        max_user_messages:
+          type: integer
+          description: Максимальное количество пользовательских сообщений, которые нужно учитывать для переписывания запроса.
+          default: 3
+
+    FilterCondition:
+      type: object
+      description: Конечное условие сравнения поля с значением.
+      required:
+        - name
+        - value
+        - operator
+      properties:
+        name:
+          type: string
+          description: Имя поля метаданных для фильтрации.
+          enum: [filepath, file_name, language, chunk_size, node_count, start_line_no]
+        value:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: number
+            - type: boolean
+            - type: array
+          description: Значение для сравнения.
+          example: "src/utils/*"
+        operator:
+          type: string
+          description: Оператор сравнения.
+          enum: [eq, neq, gt, gte, lt, lte, in, wildcard, contains]
+
+    FilterGroup:
+      type: object
+      description: Логическая группа, объединяющая несколько условий или подгрупп.
+      required:
+        - operator
+        - values
+      properties:
+        operator:
+          type: string
+          description: Логический оператор для объединения элементов списка values.
+          enum: [and, or]
+          example: "and"
+        values:
+          type: array
+          description: Список вложенных условий или групп.
+          items:
+            $ref: '#/components/schemas/FilterNode'
+
+    FilterNode:
+      description: Узел дерева фильтрации. Может быть либо условием, либо группой условий.
+      oneOf:
+        - $ref: '#/components/schemas/FilterGroup'
+        - $ref: '#/components/schemas/FilterCondition'
+
+    FilteringConfig:
+      type: object
+      description: Конфигурация фильтрации поиска.
+      properties:
+        enabled:
+          type: boolean
+          default: false
+        filter:
+          $ref: '#/components/schemas/FilterNode'
+
+    RetrieverConfig:
+      type: object
+      description: Настройка модуля извлечения релевантных источников по запросу.
+      properties:
+        embedding_config:
+          $ref: '#/components/schemas/EmbeddingConfig'
+        size:
+          type: integer
+          description: Количество извлекаемых релевантных источников.
+          default: 10
+        threshold:
+          type: number
+          format: float
+          default: 0.0
+        bm25_weight:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          default: 0.0
+          description: Вес ключевых слов для полнотекстового поиска.
+
+    RerankerConfig:
+      type: object
+      description: Настройка модуля переранжирования найденных источников.
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          default: false
+        model_name:
+          type: string
+          enum: ["qwen3-reranker-0.6b"]
+          default: "qwen3-reranker-0.6b"
+        top_k:
+          type: integer
+          description: Количество чанков после переранжирования.
+          default: 3
+        threshold:
+          type: number
+          format: float
+          default: 0.5
+
+    ContextExpansionConfig:
+      type: object
+      description: Настройки расширения найденного контекста (получение соседних чанков).
+      properties:
+        enabled:
+          type: boolean
+          default: false
+        before_chunk:
+          type: integer
+          description: Количество чанков "до" найденного, которые нужно подтянуть.
+          default: 0
+        after_chunk:
+          type: integer
+          description: Количество чанков "после" найденного, которые нужно подтянуть.
+          default: 0
+
+    qaConfig:
+      type: object
+      description: Настройки модуля генерации финального ответа с помощью LLM.
+      properties:
+        enabled:
+          type: boolean
+          default: false
+        llm_config:
+          $ref: '#/components/schemas/LLMConfig'
+        templates:
+          type: object
+          properties:
+            user_prompt_template:
+              type: string
+              description: Пользовательский шаблон для формирования зпроса с найденными контекстами.
+              default: "Диалог с пользователем: {messages}\nНайденные источники:\n{contexts}"
+            context_template:
+              type: string
+              description: Контекстный шаблон для подставления полей чанков.
+              default: "Filepath: {metadata.filepath}, start line number: {metadata.start_line_no}, end line number: {metadata.end_line_no}\n\n{content}"
+
+    SearchConfig:
+      type: object
+      properties:
+        query_preprocessor:
+          $ref: '#/components/schemas/QueryPreprocessorConfig'
+        query_rewriter:
+          $ref: '#/components/schemas/QueryRewriterConfig'
+        filtering:
+          $ref: '#/components/schemas/FilteringConfig'
+        retriever:
+          $ref: '#/components/schemas/RetrieverConfig'
+        reranker:
+          $ref: '#/components/schemas/RerankerConfig'
+        context_expansion:
+          $ref: '#/components/schemas/ContextExpansionConfig'
+        qa:
+          $ref: '#/components/schemas/qaConfig'
+        query_postprocessor:
+          $ref: '#/components/schemas/QueryPostprocessorConfig'
+
+    Message:
+      type: object
+      required:
+        - role
+        - content
+      properties:
+        role:
+          type: string
+          enum: ["user", "assistant"]
+          description: От кого данное сообщение.
+        content:
+          type: string
+          description: Содержание сообщения.
+          example: "За что отвечает функция evaluate()?"
+
+    QueryRequest:
+      type: object
+      required:
+        - meta
+        - query
+        - repo_url
+      properties:
+        repo_url:
+          type: string
+          description: URL репозитория, по которому производится поиск (репозиторий должен быть проиндексирован).
+        meta:
+          $ref: '#/components/schemas/MetaRequest'
+        query:
+          type: object
+          description: Запрос пользователя.
+          required:
+            - messages
+          properties:
+            messages:
+              type: array
+              default: Цепочка сообщений пользователь/ассистент.
+              items:
+                $ref: '#/components/schemas/Message'
+            sources:
+              type: array
+              description: Полезные источники, который был найдены ранее в диалоге с пользователем.
+              items:
+                $ref: '#/components/schemas/Chunk'
+        search_config:
+          $ref: '#/components/schemas/SearchConfig'
+        stream:
+          description: Включение стриминга ответа LLM.
+          type: boolean
+          default: false
+
+    QueryResponse:
+      type: object
+      required:
+        - meta
+        - messages
+        - answer
+        - sources
+        - llm_usage
+      properties:
+        meta:
+          $ref: '#/components/schemas/MetaResponse'
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        answer:
+          type: string
+          description: Сгенерированный ответ LLM.
+        sources:
+          type: array
+          description: Список чанков, использованных для генерации ответа.
+          items:
+            $ref: '#/components/schemas/Chunk'
+        llm_usage:
+          type: object
+          description: Информация об использовании токенов моделью LLM.
+          properties:
+            prompt_tokens:
+              type: integer
+            completion_tokens:
+              type: integer
