@@ -18,6 +18,7 @@ class LoaderConnecter:
     def __init__(self, cfg: DictConfig) -> None:
         self.download_path = cfg.paths.temp_repo_storage
         # TODO реализовать настройку LoaderConnecter из cfg
+        os.makedirs(self.download_path, exist_ok=True)
         self.logger = get_logger(self.__class__.__name__)
         self.vectore_db_client = VectorDBClient(cfg) # TODO реализовать
 
@@ -28,19 +29,29 @@ class LoaderConnecter:
         """
         repo_url = str(request.repo_url)
         branch = request.branch
+        commit_hash = request.commit_hash
+        save_dir = str(request.repo_url).split('/')[-1]
 
-        temp_dir = tempfile.mkdtemp(prefix=f"repo_{request.meta.request_id}_", dir=self.download_path)
+        # temp_dir = tempfile.mkdtemp(prefix=f"repo_{request.meta.request_id}_", dir=self.download_path)
+        temp_dir = os.path.join(self.download_path, save_dir)
+        os.makedirs(temp_dir)
 
-        self.logger.info(f"Cloning {repo_url} (branch: {branch}) to {temp_dir}")
+        branch_message = branch if branch is not None else "default branch"
+        self.logger.info(f"Cloning {repo_url} (branch: {branch_message}) to {temp_dir}")
 
         try:
-            git.Repo.clone_from(
+            repo = git.Repo.clone_from(
                 url=repo_url,
                 to_path=temp_dir,
                 branch=branch,
                 depth=1
             )
-            self.logger.info(f"Successful cloning {repo_url} (branch: {branch}) to {temp_dir}")
+            
+            self.logger.info(f"Successful cloning {repo_url} (branch: {branch_message}) to {temp_dir}")
+            if commit_hash is not None:
+                repo.git.fetch("origin", commit_hash, depth=1)
+                repo.git.checkout(commit_hash)
+                self.logger.info(f"Successful checked out to commit with hash{commit_hash}")
             return temp_dir
         except Exception as e:
             shutil.rmtree(temp_dir, ignore_errors=True)

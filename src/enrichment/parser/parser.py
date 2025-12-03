@@ -47,22 +47,23 @@ class RepoParser:
 
         self.logger.info(f"Successful done parsing repository {repo_path}.")
 
-        chunks_path = self._save_chunks_locally(chunks, str(request.meta.request_id))
+        chunks_path = self._save_chunks_locally(chunks, request)
 
         self.logger.info(f"Successful dump chunks into local storage: {chunks_path}")
 
         return chunks
 
-    def _save_chunks_locally(self, chunks: List[Chunk], request_id: str) -> str:
+    def _save_chunks_locally(self, chunks: List[Chunk], request: IndexRequest) -> str:
         """
         Сериализует список чанков в JSON и сохраняет на диск.
         Возвращает путь к созданному файлу.
         """
+        save_name = str(request.repo_url).split('/')[-1]
         try:
             output_dir = Path(self.dump_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            filename = f"{request_id}.json"
+            filename = f"{save_name}.json"
             file_path = output_dir / filename
 
             data_to_save = [chunk.model_dump(mode='json') for chunk in chunks]
@@ -73,7 +74,7 @@ class RepoParser:
             return str(file_path.absolute())
 
         except Exception as e:
-            self.logger.error(f"Failed to save chunks locally for {request_id}: {e}")
+            self.logger.error(f"Failed to save chunks locally for {save_name}: {e}")
             return ""
 
     def _is_excluded(self, name: str, patterns: set) -> bool:

@@ -1,0 +1,15 @@
+https://github.com/astropy/astropy 0a041d38fbd0014298d4cf340d9f891c4522093f
+https://github.com/django/django 14fc2e97036fc9d7acb55ada4f16f1aa3bdc5ec7
+https://github.com/pallets/flask 85c5d93cbd049c4bd0679c36fd1ddcae8c37b642
+https://github.com/matplotlib/matplotlib a5e1f6086e92d5cc0a23f85685d03d85b89a8395
+https://github.com/pylint-dev/pylint 44740e5e5cdd2b80321a4f0ed4254213d058b9f6
+https://github.com/pytest-dev/pytest 5989efe3efec31a9d14f550d89903b6311dfc828
+https://github.com/psf/requests 46e939b5525d9c72b677340985582b04b128478a
+https://github.com/scikit-learn/scikit-learn adb1ae76d798e822984d4e312c90c6ca8f01a3df
+https://github.com/sphinx-doc/sphinx 6c9e3209c4ebc81c7c09f6a30eeaa4651f32f461
+https://github.com/sqlfluff/sqlfluff db9801b7eb7fd014e765117f63ee1b0675fa9f87
+https://github.com/sympy/sympy 3c817ed8ab551d71e36907ce869afe5e4ca789ff
+https://github.com/pydata/xarray 40119bf35c53fc222934894d842cfc07b2e264bf
+https://github.com/conan-io/conan 52f43d98fe44ab92d01317110488d0670c3e9e64
+https://github.com/reflex-dev/reflex fe0f946dc0c240c6c1e513318c21db407e191c78
+https://github.com/streamlink/streamlink ab1f36560005253ca6a290a614730bf18a29a7f9

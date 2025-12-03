@@ -74,7 +74,16 @@ class IndexConfig(BaseModel):
 class IndexRequest(BaseModel):
     repo_url: HttpUrl = Field(..., example="https://github.com/owner/repo")
     meta: MetaRequest
-    branch: str = Field("main")
+    branch: Optional[str] = Field(
+        None, 
+        description="Specific branch to be clonned from",
+        example="main"
+    )
+    commit_hash: Optional[str] = Field(
+        None, 
+        description="Specific commit hash",
+        example="0a041d3"
+    )
     config: Optional[IndexConfig] = None
 
 

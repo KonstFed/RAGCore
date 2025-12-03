@@ -19,16 +19,24 @@ st.set_page_config(page_title="RAGCode")
 tab_index, tab_chat = st.tabs(["Индексировать репозиторий", "Чат по коду"])
 
 with tab_index:
-    repo_url = st.text_input("GitHub URL")
+    input_text = st.text_input("GitHub URL")
 
-    if st.button("Индексировать") and repo_url:
+    if st.button("Индексировать") and input_text:
+        
+        # TODO: add some regular expression to handle input more robustly
+        repo_url = input_text.split()[0]
+        if len(input_text.split()) == 2:
+            commit_hash = input_text.split()[1]
+        else:
+            commit_hash = None
 
         request = { # IndexRequest
             "meta": {
                 "request_id": str(uuid4())
             },
             "repo_url": repo_url,
-            "branch": "main"
+            "branch": None,  # TODO: add branch input handle
+            "commit_hash": commit_hash
         }
 
         config = { # IndexConfig

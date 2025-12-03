@@ -11,8 +11,8 @@ llm:
   api_key: "${oc.env:LLM_API_KEY, 'sk-placeholder'}"
 
 paths:
-  temp_chunks_storage: "/tmp/chunks"
-  temp_repo_storage: "/tmp/repos"
+  temp_chunks_storage: "data/chunks"
+  temp_repo_storage: "data/repos"
   openapi_spec: "api/api.yaml" # Путь к файлу API, который вы прислали
 
 parser:
