@@ -52,3 +52,7 @@ def test_repo_parser(config_path: str, index_request: IndexRequest, index_config
 
     # simple test for checking if it runs at all
     assert len(chunks) == 7
+
+    for chunk in chunks:
+        print("ABOBA", chunk.metadata.filepath)
+        assert chunk.metadata.file_name == "a.py"

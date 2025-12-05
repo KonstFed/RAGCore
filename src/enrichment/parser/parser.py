@@ -138,9 +138,7 @@ class RepoParser:
         for chunk in raw_chunks:
             chunk = Chunk.model_validate(chunk)
             chunk.metadata.language = ast_chunker.language
-            print("--------------------------------")
-            print(chunk)
-            print("--------------------------------")
+            chunk.metadata.filepath = filepath
             chunks.append(chunk)
         return chunks
 

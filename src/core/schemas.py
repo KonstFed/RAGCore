@@ -1,4 +1,5 @@
 import uuid
+from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Literal, Dict, Any, Union
 from pydantic import BaseModel, Field, HttpUrl, UUID4
@@ -98,7 +99,7 @@ class ChunkMetadata(BaseModel):
     
     @property
     def file_name(self) -> str:
-        return self.filepath.name
+        return Path(self.filepath).name
 
 
 class Chunk(BaseModel):
