@@ -18,6 +18,15 @@ class AstChunkerConfig(BaseModel):
     metadata_template: str = Field("default")
 
 
+class TextSplitterConfig(BaseModel):
+    """Конфигурация LangChain text splitter"""
+    chunk_size: int = Field(1000, description="Максимальный размер чанка в символах.")
+    chunk_overlap: int = Field(200, description="Перекрытие между чанками в символах.")
+    separators: Optional[List[str]] = Field(
+        None, description="Список разделителей для разбиения текста. По умолчанию используются стандартные разделители LangChain."
+    )
+
+
 class EmbeddingConfig(BaseModel):
     model_name: Literal[
         "e5-large", "qwen3-embedding-0.6b", "qwen3-embedding-4b"
@@ -63,7 +72,12 @@ class MetaResponse(BaseModel):
 
 
 class IndexConfig(BaseModel):
-    chunker_config: Optional[AstChunkerConfig] = None
+    ast_chunker_config: Optional[AstChunkerConfig] = None
+    ast_chunker_languages: List[Literal["python", "java", "typescript", "csharp"]] = Field(
+        description="Список языков для AST chunking. Если указать пустой список, то AST chunking не будет использоваться.",
+        default=["python", "java", "typescript", "csharp"]
+    )
+    text_splitter_config: TextSplitterConfig
     embedding_config: Optional[EmbeddingConfig] = None
     exclude_patterns: Optional[List[Literal["tests/", "*.lock", "__pycache__", ".venv", "build"]]] = Field(
         None, description="Список паттернов .gitignore для исключения файлов."

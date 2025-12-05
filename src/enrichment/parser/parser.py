@@ -1,13 +1,13 @@
 import os
 import fnmatch
 import json
-import uuid
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from astchunk import ASTChunkBuilder
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from src.core.schemas import IndexRequest, Chunk, ChunkMetadata, IndexConfig, MetaRequest
+from src.core.schemas import IndexRequest, Chunk, ChunkMetadata, IndexConfig
 from src.utils.logger import get_logger
 
 
@@ -41,10 +41,19 @@ class RepoParser:
 
         # init ast chunker
         ast_chunker_map = {}
-        for language in self.AST_CHUNKER_LANGUAGES:
-            ast_chunker_map[language] = ASTChunkBuilder(
-                language=language, **config.chunker_config.model_dump(),
-            )
+        if config.ast_chunker_config:
+            for language in config.ast_chunker_languages:
+                ast_chunker_map[language] = ASTChunkBuilder(
+                    language=language, **config.ast_chunker_config.model_dump(),
+                )
+
+        # init text splitter for non-AST languages
+        splitter_cfg = config.text_splitter_config.model_dump()
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=splitter_cfg["chunk_size"],
+            chunk_overlap=splitter_cfg["chunk_overlap"],
+            separators=splitter_cfg.get("separators"),
+        )
 
         self.logger.info(f"Start parsing repository {repo_path}.")
 
@@ -59,7 +68,7 @@ class RepoParser:
                 relative_path = os.path.relpath(full_path, repo_path)
 
                 file_chunks = self._process_file(
-                    full_path, relative_path, file, ast_chunker_map
+                    full_path, relative_path, file, ast_chunker_map, text_splitter
                 )
                 chunks.extend(file_chunks)
 
@@ -106,13 +115,11 @@ class RepoParser:
         relative_path: str,
         filename: str,
         ast_chunker_map: dict[str, ASTChunkBuilder],
+        text_splitter: Optional[RecursiveCharacterTextSplitter],
     ) -> List[Chunk]:
         """Читает файл и разбивает на чанки."""
         _, ext = os.path.splitext(filename)
         language = self.extension_map.get(ext)
-
-        if not language:
-            return []
 
         try:
             with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -120,15 +127,19 @@ class RepoParser:
         except Exception:
             return []
 
-        if language in self.AST_CHUNKER_LANGUAGES:
+        if language in ast_chunker_map:
+            # use AST chunker if language match
             return self._chunk_ast(
-                content, relative_path, filename, ast_chunker_map[language]
+                content, relative_path, ast_chunker_map[language]
             )
         else:
-            return self._chunk_simple_lines(content, relative_path, filename, language)
+            # default use lanchain text splitter
+            return self._chunk_langchain(
+                content, relative_path, language, text_splitter
+            )
 
     def _chunk_ast(
-        self, content: str, filepath: str, filename: str, ast_chunker: ASTChunkBuilder
+        self, content: str, filepath: str, ast_chunker: ASTChunkBuilder
     ) -> List[Chunk]:
         """
         Простой пример AST чанкинга для Python: разбиваем по функциям и классам.
@@ -142,47 +153,41 @@ class RepoParser:
             chunks.append(chunk)
         return chunks
 
-    def _chunk_simple_lines(
-        self, content: str, filepath: str, filename: str, language: str
+    def _chunk_langchain(
+        self,
+        content: str,
+        filepath: str,
+        language: str,
+        text_splitter: RecursiveCharacterTextSplitter,
     ) -> List[Chunk]:
-        """Наивная нарезка по 100 строк для других языков."""
-        lines = content.splitlines()
-        total_lines = len(lines)
-        chunk_size = 100
-        overlap = 20
+        """Использует LangChain text splitter"""
+        text_chunks = text_splitter.split_text(content)
         chunks = []
+        current_pos = 0
 
-        if total_lines == 0:
-            return []
+        for chunk_text in text_chunks:
+            # Находим позицию чанка в оригинальном контенте
+            chunk_start_pos = content.find(chunk_text, current_pos)
+            if chunk_start_pos == -1:
+                # Fallback: считаем строки в самом чанке
+                chunk_lines = chunk_text.splitlines()
+                start_line = current_pos // 100 + 1  # Приблизительная оценка
+                end_line = start_line + len(chunk_lines) - 1
+            else:
+                # Точный подсчет строк
+                start_line = content[:chunk_start_pos].count('\n') + 1
+                end_line = content[:chunk_start_pos + len(chunk_text)].count('\n')
+                current_pos = chunk_start_pos + len(chunk_text)
 
-        for i in range(0, total_lines, chunk_size - overlap):
-            end = min(i + chunk_size, total_lines)
-            chunk_lines = lines[i:end]
-            chunk_content = "\n".join(chunk_lines)
-
+            chunk_lines = chunk_text.splitlines()
             meta = ChunkMetadata(
                 filepath=filepath,
-                chunk_size=len(chunk_content),
+                chunk_size=len(chunk_text),
                 line_count=len(chunk_lines),
-                start_line_no=i + 1,
-                end_line_no=end,
+                start_line_no=start_line,
+                end_line_no=end_line,
                 language=language,
             )
-            chunks.append(Chunk(content=chunk_content, metadata=meta))
+            chunks.append(Chunk(content=chunk_text, metadata=meta))
 
         return chunks
-
-    def _create_single_chunk(
-        self, content, filepath, filename, language, start, end
-    ) -> List[Chunk]:
-        meta = ChunkMetadata(
-            chunk_id=uuid.uuid4(),
-            filepath=filepath,
-            file_name=filename,
-            chunk_size=len(content),
-            line_count=end - start + 1,
-            start_line_no=start,
-            end_line_no=end,
-            language=language,
-        )
-        return [Chunk(content=content, metadata=meta)]

@@ -24,12 +24,16 @@ def index_request() -> IndexRequest:
 @pytest.fixture
 def index_config() -> IndexConfig:
     config = { # IndexConfig
-        "chunker_config": {
+        "ast_chunker_config": {
             "max_chunk_size": 100,
             "chunk_overlap": 20,
             "extensions": [".py", ".ipynb", ".cpp", ".h", ".java", ".ts", ".tsx", ".cs"],
             "chunk_expansion": True,
             "metadata_template": "default"
+        },
+        "text_splitter_config": {
+            "chunk_size": 500,
+            "chunk_overlap": 50,
         },
         "embedding_config": {
             "model_name": "qwen3-embedding-0.6b",
@@ -51,8 +55,11 @@ def test_repo_parser(config_path: str, index_request: IndexRequest, index_config
     )
 
     # simple test for checking if it runs at all
-    assert len(chunks) == 7
+    assert len(chunks) == 22
 
-    for chunk in chunks:
-        print("ABOBA", chunk.metadata.filepath)
-        assert chunk.metadata.file_name == "a.py"
+
+    n_python_chunks = len([c for c in chunks if c.metadata.file_name == "a.py"])
+    n_md_chunks = len([c for c in chunks if c.metadata.file_name == "some_text.md"])
+
+    assert n_python_chunks == 7
+    assert n_md_chunks == 15
