@@ -19,9 +19,9 @@ parser:
   default_exclude: [".git", "__pycache__", "*.lock", "*.png", "*.jpg", "node_modules"]
   extension_map:
     .py: "python"
-    .js: "java-script"
-    .ts: "type-script"
+    .js: "javascript"
+    .ts: "typescript"
     .java: "java"
     .go: "go"
     .cpp: "cpp"
-    .cs: "c-sharp"
+    .cs: "csharp"

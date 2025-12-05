@@ -1,6 +1,7 @@
+import uuid
 from datetime import datetime
 from typing import List, Optional, Literal, Dict, Any, Union
-from pydantic import BaseModel, Field, HttpUrl, UUID4, ConfigDict
+from pydantic import BaseModel, Field, HttpUrl, UUID4
 
 
 class AstChunkerConfig(BaseModel):
@@ -14,9 +15,6 @@ class AstChunkerConfig(BaseModel):
         description="Включает ли astchunk расширение контекста до границ функциональных блоков."
     )
     metadata_template: str = Field("default")
-    extensions: Optional[List[Literal[
-        ".py", ".ipynb", ".cpp", ".h", ".java", ".ts", ".tsx", ".cs"
-    ]]] = Field(None, description="Список расширений подлежащих индексированию.")
 
 
 class EmbeddingConfig(BaseModel):
@@ -80,17 +78,13 @@ class IndexRequest(BaseModel):
 
 class ChunkMetadata(BaseModel):
     """Метаданные чанка кода."""
-    chunk_id: UUID4 = Field(..., description="Уникальный id чанка.")
+    chunk_id: UUID4 = Field(default_factory=uuid.uuid4, description="Уникальный id чанка.")
     filepath: str = Field(
         ...,
         description="Полный путь к файлу внутри репозитория.",
         example="src/utils/helpers.py"
     )
-    file_name: str = Field(
-        ...,
-        description="Полное имя файла, вместе с расширением.",
-        example="helpers.py"
-    )
+
     chunk_size: Optional[int] = Field(None, description="Размер чанка в символах.")
     line_count: Optional[int] = Field(None, description="Количество строк в чанке.")
     start_line_no: int = Field(..., description="Номер первой строки кода в оригинальном файле.")
@@ -99,8 +93,12 @@ class ChunkMetadata(BaseModel):
         None, description="Количество AST узлов в чанке (специфично для astchunk)."
     )
     language: Optional[Literal[
-        "python", "go", "java", "cpp", "java-script", "c-sharp", "type-script"
+        "python", "go", "java", "cpp", "javascript", "csharp", "typescript"
     ]] = Field(None, description="Язык программирования.")
+    
+    @property
+    def file_name(self) -> str:
+        return self.filepath.name
 
 
 class Chunk(BaseModel):
