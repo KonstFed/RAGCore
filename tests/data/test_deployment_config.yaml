@@ -1,0 +1,27 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+database:
+  url: "http://localhost:6333"
+  collection_name: "github_code_chunks"
+
+llm:
+  default_provider: "openai"
+  api_key: "${oc.env:LLM_API_KEY, 'sk-placeholder'}"
+
+paths:
+  temp_chunks_storage: "/tmp/chunks"
+  temp_repo_storage: "/tmp/repos"
+  openapi_spec: "api/api.yaml" # Путь к файлу API, который вы прислали
+
+parser:
+  default_exclude: [".git", "__pycache__", "*.lock", "*.png", "*.jpg", "node_modules"]
+  extension_map:
+    .py: "python"
+    .js: "javascript"
+    .ts: "typescript"
+    .java: "java"
+    .go: "go"
+    .cpp: "cpp"
+    .cs: "csharp"
