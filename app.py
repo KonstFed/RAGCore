@@ -32,12 +32,16 @@ with tab_index:
         }
 
         config = { # IndexConfig
-            "chunker_config": {
+            "ast_chunker_config": {
                 "max_chunk_size": 1000,
                 "chunk_overlap": 50,
                 "extensions": [".py", ".ipynb", ".cpp", ".h", ".java", ".ts", ".tsx", ".cs"],
                 "chunk_expansion": True,
                 "metadata_template": "default"
+            },
+            "text_splitter_config": {
+                "chunk_size": 500,
+                "chunk_overlap": 50,
             },
             "embedding_config": {
                 "model_name": "qwen3-embedding-0.6b",
