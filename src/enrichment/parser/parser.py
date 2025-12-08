@@ -16,8 +16,6 @@ class RepoParser:
     Отвечает за обход файловой системы и чанкинг кода.
     """
 
-    AST_CHUNKER_LANGUAGES = ["python", "java", "typescript", "csharp"]
-
     def __init__(self, cfg):
         self.default_exclude = cfg.parser.default_exclude
         self.extension_map = cfg.parser.extension_map

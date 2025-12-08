@@ -40,7 +40,9 @@ def index_config() -> IndexConfig:
             "dimensions": 1024,
             "max_tokens": 8192
         },
-        "exclude_patterns": ["*.lock", "__pycache__", ".venv", "build"]
+        "exclude_patterns": ["*.lock", "__pycache__", ".venv", "build"],
+        "ast_chunker_languages": ["python", "java", "typescript", "csharp"]
+
     }
     return IndexConfig(**config)
 
