@@ -1,6 +1,8 @@
+import uuid
+from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Literal, Dict, Any, Union
-from pydantic import BaseModel, Field, HttpUrl, UUID4, ConfigDict
+from pydantic import BaseModel, Field, HttpUrl, UUID4
 
 
 class AstChunkerConfig(BaseModel):
@@ -14,9 +16,15 @@ class AstChunkerConfig(BaseModel):
         description="Включает ли astchunk расширение контекста до границ функциональных блоков."
     )
     metadata_template: str = Field("default")
-    extensions: Optional[List[Literal[
-        ".py", ".ipynb", ".cpp", ".h", ".java", ".ts", ".tsx", ".cs"
-    ]]] = Field(None, description="Список расширений подлежащих индексированию.")
+
+
+class TextSplitterConfig(BaseModel):
+    """Конфигурация LangChain text splitter"""
+    chunk_size: int = Field(1000, description="Максимальный размер чанка в символах.")
+    chunk_overlap: int = Field(200, description="Перекрытие между чанками в символах.")
+    separators: Optional[List[str]] = Field(
+        None, description="Список разделителей для разбиения текста. По умолчанию используются стандартные разделители LangChain."
+    )
 
 
 class EmbeddingConfig(BaseModel):
@@ -64,7 +72,12 @@ class MetaResponse(BaseModel):
 
 
 class IndexConfig(BaseModel):
-    chunker_config: Optional[AstChunkerConfig] = None
+    ast_chunker_config: Optional[AstChunkerConfig] = None
+    ast_chunker_languages: List[Literal["python", "java", "typescript", "csharp"]] = Field(
+        description="Список языков для AST chunking. Если указать пустой список, то AST chunking не будет использоваться.",
+        default=["python", "java", "typescript", "csharp"]
+    )
+    text_splitter_config: TextSplitterConfig
     embedding_config: Optional[EmbeddingConfig] = None
     exclude_patterns: Optional[List[Literal["tests/", "*.lock", "__pycache__", ".venv", "build"]]] = Field(
         None, description="Список паттернов .gitignore для исключения файлов."
@@ -80,17 +93,13 @@ class IndexRequest(BaseModel):
 
 class ChunkMetadata(BaseModel):
     """Метаданные чанка кода."""
-    chunk_id: UUID4 = Field(..., description="Уникальный id чанка.")
+    chunk_id: UUID4 = Field(default_factory=uuid.uuid4, description="Уникальный id чанка.")
     filepath: str = Field(
         ...,
         description="Полный путь к файлу внутри репозитория.",
         example="src/utils/helpers.py"
     )
-    file_name: str = Field(
-        ...,
-        description="Полное имя файла, вместе с расширением.",
-        example="helpers.py"
-    )
+
     chunk_size: Optional[int] = Field(None, description="Размер чанка в символах.")
     line_count: Optional[int] = Field(None, description="Количество строк в чанке.")
     start_line_no: int = Field(..., description="Номер первой строки кода в оригинальном файле.")
@@ -99,8 +108,12 @@ class ChunkMetadata(BaseModel):
         None, description="Количество AST узлов в чанке (специфично для astchunk)."
     )
     language: Optional[Literal[
-        "python", "go", "java", "cpp", "java-script", "c-sharp", "type-script"
+        "python", "go", "java", "cpp", "javascript", "csharp", "typescript"
     ]] = Field(None, description="Язык программирования.")
+    
+    @property
+    def file_name(self) -> str:
+        return Path(self.filepath).name
 
 
 class Chunk(BaseModel):

@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "astchunk==0.1.0",
     "dotenv==0.9.9",
+    "langchain-text-splitters>=0.2.0",
     "omegaconf==2.3.0",
     "pydantic==2.12.5",
     "pytest>=9.0.1",
