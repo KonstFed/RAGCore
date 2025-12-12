@@ -1,0 +1,112 @@
+[
+    {
+        "content": "from pydantic import BaseModel, Field\n\n\nclass ChunkerConfig(BaseModel):\n    language: str\n    max_chunk_size: int\n    chunk_overlap: int\n    chunk_expansion: bool\n    metadata_template: str = \"default\"\n\n    extensions: list[str] = Field(default_factory=list)\n\nclass Metadata(BaseModel):\n    filepath: str\n    chunk_size: int\n    line_count: int\n    start_line_no: int\n    end_line_no: int\n    node_count: int\n\nclass Chunk(BaseModel):\n    content: str\n    metadata: Metadata\n",
+        "metadata": {
+            "filepath": "",
+            "chunk_size": 370,
+            "line_count": 24,
+            "start_line_no": 0,
+            "end_line_no": 23,
+            "node_count": 1
+        }
+    },
+    {
+        "content": "from pathlib import Path\n\nfrom astchunk import ASTChunkBuilder\nfrom pydantic import BaseModel\n\nfrom repochunker.models import Chunk, ChunkerConfig\nfrom repochunker.repoiter import RepoIterator",
+        "metadata": {
+            "filepath": "",
+            "chunk_size": 170,
+            "line_count": 7,
+            "start_line_no": 0,
+            "end_line_no": 6,
+            "node_count": 5
+        }
+    },
+    {
+        "content": "class RouterChunker:\n    \"\"\"Routes files to the appropriate language-specific chunker.\"\"\"\n\n    def __init__(\n        self,\n        repoiter: RepoIterator,\n        language_configs: dict[str, ChunkerConfig],\n        config: dict = None,\n    ):\n        self.repoiter = repoiter\n        self.chunkers = {}\n        for language in language_configs:\n            language_config = language_configs[language]\n            chunker = ASTChunkBuilder(**language_config.model_dump())\n            for extension in language_config.extensions:\n                self.chunkers[extension] = chunker\n\n    def chunk_file(self, file_path: Path) -> list[Chunk]:\n        \"\"\"Route a file to the appropriate language-specific chunker.\"\"\"\n        chunker = self.chunkers.get(file_path.suffix, None)\n\n        if chunker is None:\n            # this is not a code file\n            # TODO write chunking for docs\n            return []\n\n        with file_path.open(\"r\") as f:\n            content = f.read()\n\n        return [Chunk.model_validate(chunk) for chunk in chunker.chunkify(content)]\n\n    def chunk_repo(self, repo_path: Path) -> list[Chunk]:\n        \"\"\"Chunk a repository.\"\"\"\n        chunks = []\n        for file_path in self.repoiter(repo_path):\n            file_path = repo_path / file_path\n            chunks.extend(self.chunk_file(file_path))\n        return chunks",
+        "metadata": {
+            "filepath": "",
+            "chunk_size": 949,
+            "line_count": 38,
+            "start_line_no": 9,
+            "end_line_no": 46,
+            "node_count": 1
+        }
+    },
+    {
+        "content": "class RouterChunkerConfig(BaseModel):\n    chunkers: dict[str, ChunkerConfig]\n\n    def create(self) -> RouterChunker:\n        repoiter = RepoIterator()\n        return RouterChunker(repoiter=repoiter, language_configs=self.chunkers)\nimport json\n\nif __name__ == \"__main__\":\n    from repochunker.config_utils import load_config\n\n    router_config = load_config(\n        RouterChunkerConfig, Path(__file__).parent / \"chunk_config_example.yaml\"\n    )\n    router_chunker = router_config.create()\n    chunks = router_chunker.chunk_repo(Path(__file__).parent.parent)\n    with open(\"chunks.json\", \"w\") as f:\n        f.write(json.dumps([chunk.model_dump() for chunk in chunks], indent=4))",
+        "metadata": {
+            "filepath": "",
+            "chunk_size": 561,
+            "line_count": 18,
+            "start_line_no": 49,
+            "end_line_no": 66,
+            "node_count": 3
+        }
+    },
+    {
+        "content": "from collections.abc import Iterator\nfrom pathlib import Path\n\nfrom pathspec import PathSpec\nfrom pathspec.patterns import GitWildMatchPattern",
+        "metadata": {
+            "filepath": "",
+            "chunk_size": 126,
+            "line_count": 5,
+            "start_line_no": 0,
+            "end_line_no": 4,
+            "node_count": 4
+        }
+    },
+    {
+        "content": "class RepoIterator:\n    \"\"\"Iterates over repository files and filters out files matching .gitignore patterns.\"\"\"\n\n    DEFAULT_IGNORE_FOLDER = Path(__file__).parent / \"ignore_rules\"\n    IGNORE_FILE_EXTENSION = \".ignore\"\n\n    def __init__(\n        self,\n        ignore_patterns_folder: Path | str | None = None,\n    ):\n        \"\"\"Initialize RepoChunker with filtering options.\n\n        Args:\n            ignore_patterns_folder: Folder containing .ignore files (default: ignore_rules)\n        \"\"\"\n        self.ignore_patterns_folder = (\n            Path(ignore_patterns_folder) if ignore_patterns_folder else self.DEFAULT_IGNORE_FOLDER\n        )\n\n        self.ignore_spec = self._get_ignore_pattern(self.ignore_patterns_folder)\n\n    def _load_patterns_from_file(self, ignore_file: Path) -> list[str]:\n        \"\"\"Load patterns from a single ignore file.\n\n        Args:\n            ignore_file: Path to the ignore file\n\n        Returns:\n            List of pattern strings\n        \"\"\"\n        patterns = []\n        with ignore_file.open(\"r\", encoding=\"utf-8\") as f:\n            for line in f:\n                line = line.strip()\n                # Skip empty lines and comments\n                if line and not line.startswith(\"#\"):\n                    patterns.append(line)\n        return patterns",
+        "metadata": {
+            "filepath": "",
+            "chunk_size": 899,
+            "line_count": 38,
+            "start_line_no": 7,
+            "end_line_no": 44,
+            "node_count": 8
+        }
+    },
+    {
+        "content": "    def _get_ignore_pattern(self, ignore_folder: Path) -> PathSpec:\n        \"\"\"Load and combine ignore patterns from all .ignore files in the specified folder.\n\n        Args:\n            ignore_folder: Path to the folder containing .ignore files.\n\n        Returns:\n            A PathSpec object containing patterns from all .ignore files in the folder.\n        \"\"\"\n        all_patterns = []\n        if ignore_folder.exists() and ignore_folder.is_dir():\n            for file in ignore_folder.iterdir():\n                if file.is_file() and file.suffix == self.IGNORE_FILE_EXTENSION:\n                    patterns = self._load_patterns_from_file(file)\n                    all_patterns.extend(patterns)\n\n        return PathSpec.from_lines(GitWildMatchPattern, all_patterns)",
+        "metadata": {
+            "filepath": "",
+            "chunk_size": 550,
+            "line_count": 17,
+            "start_line_no": 46,
+            "end_line_no": 62,
+            "node_count": 1
+        }
+    },
+    {
+        "content": "    def iterate_files(self, repo_path: Path) -> Iterator[Path]:\n        \"\"\"Iterate over all files in the repository, excluding those matching ignore patterns.\n\n        Args:\n            repo_path: Path to the repository root\n\n        Yields:\n            Path objects for each file that should be processed\n\n        Raises:\n            ValueError: If repo_path doesn't exist or is not a directory\n        \"\"\"\n        if not repo_path.exists():\n            raise ValueError(f\"Repository path does not exist: {repo_path}\")\n        if not repo_path.is_dir():\n            raise ValueError(f\"Repository path is not a directory: {repo_path}\")\n\n        repo_path = repo_path.resolve()\n\n        # Load and merge all ignore patterns\n\n        for file_path in repo_path.rglob(\"*\"):\n            # Skip directories\n            if file_path.is_dir():\n                continue\n\n            file_path = file_path.relative_to(repo_path)\n\n            # Skip if any parent directory is excluded\n            if any(\n                self.ignore_spec.match_file(parent.as_posix())\n                for parent in file_path.parents\n                if parent != Path(\".\")\n            ):\n                continue\n\n            # Skip if the file itself is excluded\n            if self.ignore_spec.match_file(file_path.as_posix()):\n                continue\n\n            yield file_path\n\n    def __call__(self, repo_path: Path) -> Iterator[Path]:\n        yield from self.iterate_files(repo_path)",
+        "metadata": {
+            "filepath": "",
+            "chunk_size": 961,
+            "line_count": 44,
+            "start_line_no": 64,
+            "end_line_no": 107,
+            "node_count": 2
+        }
+    },
+    {
+        "content": "\"\"\"Repository chunker package.\"\"\"\n\nfrom repochunker.chunker import RouterChunker, RouterChunkerConfig\nfrom repochunker.config_utils import load_config, save_config\nfrom repochunker.models import Chunk\n\n__version__ = \"0.1.0\"\n__all__ = [\"RouterChunker\", \"RouterChunkerConfig\", \"Chunk\", \"load_config\", \"save_config\"]\n\n",
+        "metadata": {
+            "filepath": "",
+            "chunk_size": 285,
+            "line_count": 10,
+            "start_line_no": 0,
+            "end_line_no": 9,
+            "node_count": 1
+        }
+    },
+    {
+        "content": "from pathlib import Path\n\nimport yaml\nfrom pydantic import BaseModel\n\n\ndef load_config(cls: type[BaseModel], cfg_p: Path | str) -> BaseModel:\n    cfg_p = Path(cfg_p)\n    with cfg_p.open(\"r\") as f:\n        data = yaml.safe_load(f)\n\n    return cls.model_validate(data)\n\n\ndef save_config(model: BaseModel, cfg_p: Path | str) -> None:\n    \"\"\"Save a Pydantic BaseModel instance to a YAML file.\n\n    Args:\n        model: The Pydantic model instance to save.\n        cfg_p: The path to the YAML file where the model will be saved.\n\n    \"\"\"\n    cfg_p = Path(cfg_p)\n    # Convert the model to a dictionary\n    model_dict = model.model_dump(mode=\"json\")\n\n    # Write the dictionary to a YAML file\n    with cfg_p.open(\"w\") as f:\n        yaml.safe_dump(model_dict, f, default_flow_style=False, sort_keys=False)\n",
+        "metadata": {
+            "filepath": "",
+            "chunk_size": 614,
+            "line_count": 30,
+            "start_line_no": 0,
+            "end_line_no": 29,
+            "node_count": 1
+        }
+    }
+]
