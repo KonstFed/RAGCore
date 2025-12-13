@@ -1,8 +1,8 @@
-import os
 from omegaconf import DictConfig
+import requests
+import json
 from src.core.schemas import Chunk
 from typing import List, Dict, Any
-import random
 from src.core.schemas import Chunk, IndexRequest, IndexConfig
 from src.utils.logger import get_logger
 
@@ -14,7 +14,10 @@ class EmbeddingModel:
     def __init__(self, cfg: DictConfig) -> None:
         # TODO реализовать настройку EmbeddingModel из cfg
         self.logger = get_logger(self.__class__.__name__)
-        self.dimension = 1024
+        self.url = cfg.embeddings.url
+        self.api_key = cfg.embeddings.api_key
+        self.model = cfg.embeddings.model
+
 
     async def vectorize(self, chunks: List[Chunk], request: IndexRequest, config: IndexConfig) -> List[Dict[str, Any]]:
         """
@@ -26,9 +29,7 @@ class EmbeddingModel:
         texts = [chunk.content for chunk in chunks]
 
         self.logger.info("Start vectorize chunks.")
-        # ЭМУЛЯЦИЯ ПОЛУЧЕНИЯ ЭМБЕДИНГОВ
-        # В реальности: embeddings = self.model.encode(texts)
-        embeddings = self._mock_embeddings(len(texts))
+        embeddings = self.embed(texts)
 
         for chunk, vector in zip(chunks, embeddings):
             payload = chunk.metadata.model_dump(mode='json')
@@ -48,9 +49,17 @@ class EmbeddingModel:
 
         return vectors_data
 
-    def _mock_embeddings(self, count: int) -> List[List[float]]: # TODO убрать, сейчас используется для теста
-        """Генерирует случайные вектора для теста."""
-        return [
-            [random.random() for _ in range(self.dimension)] 
-            for _ in range(count)
-        ]
+
+    def embed(self, texts: List[str]) -> List[List[float]]:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        data = {
+            "model": self.model,
+            "task": "nl2code.query",
+            "truncate": False,
+            "input": texts
+        }
+        response = requests.post(self.url, headers=headers, data=json.dumps(data))
+        return [r.get('embedding') for r in response.json()['data']]
