@@ -85,7 +85,7 @@ components:
       description: Метаданные ответа.
       required:
         - request_id
-        - start_detatime
+        - start_datetime
         - end_datetime
         - status
       properties:
@@ -93,11 +93,11 @@ components:
           type: string
           format: uuid
           description: Уникальный id ответа (должен совпадать с запросом).
-        start_detatime:
+        start_datetime:
           type: string
           format: "date-time"
           pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$"
-        end_detatime:
+        end_datetime:
           type: string
           format: "date-time"
           pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$"

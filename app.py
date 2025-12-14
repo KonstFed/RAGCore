@@ -81,21 +81,38 @@ with tab_chat:
         }
 
         config = { # SearchConfig
-            "query_preprocessor": {"enabled": True},
+            "query_preprocessor": {
+                "enabled": True,
+                "normalize_whitespace": True,
+                "sanitization": {
+                    "enabled": True,
+                    "regex_patterns": ["jailbreak", "hallucinations"],
+                    "replacement_token": ""
+                }
+            },
             "query_rewriter": {"enabled": True},
             "retriever": {"enabled": True},
             "filtering": {"enabled": True},
             "reranker": {"enabled": True},
             "context_expansion": {"enabled": True},
             "qa": {"enabled": True},
-            "query_postprocessor": {"enabled": False}
+            "query_postprocessor": {
+                "enabled": True,
+                "format_markdown": True,
+                "sanitization": {
+                    "enabled": True,
+                    "regex_patterns": ["can't", "wtf", ""],
+                    "replacement_token": ""
+                }
+            }
         }
 
         with st.spinner('Думаю...'):
             try:
                 response = asyncio.run(assistant.query(request, config))
 
-                st.markdown(response.answer)
+                st.markdown(f"👤 : {response.messages[-1].content}" )
+                st.markdown(f"🔍 : {response.answer}")
 
                 with st.expander("Источники"):
                     for source in response.sources:

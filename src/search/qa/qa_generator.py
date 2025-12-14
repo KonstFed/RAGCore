@@ -1,7 +1,9 @@
 import os
 from copy import deepcopy
+from datetime import datetime
+from omegaconf import DictConfig
 from src.core.llm import LLMClient
-from src.core.schemas import QueryRequest, SearchConfig
+from src.core.schemas import QueryRequest, QueryResponse, SearchConfig
 from src.search.qa.resources.prompts import DEFAULT_SYSTEM_PROMPT
 from src.search.qa.resources.templates import DEFAULT_USER_PROMPT_TEMPLATE, DEFAULT_CONTEXT_TEMPLATE
 from typing import Any, Dict, List, Tuple
@@ -13,13 +15,31 @@ class QAGenerator:
     Класс генерации ответа (QA).
     Формирует промпт из чанков и истории сообщений, обращается к LLM.
     """
-    def __init__(self):
+    def __init__(self, cfg: DictConfig) -> None:
         self.logger = get_logger(self.__class__.__name__)
-        pass # TODO реализовать коннект к LLMClient
+        self.fallback_message = cfg.qa.fallback_message
+        self.llm_client = LLMClient(cfg)
 
-    async def pipeline(self, request: QueryRequest, config: SearchConfig) -> Dict[str, Any]:
-        self.logger.info("Run qa pipeline.")
+    async def pipeline(self, request: QueryRequest, config: SearchConfig) -> QueryResponse:
+        self.logger.info(f"Run qa pipeline for request_id={request.meta.request_id}.")
+
         config = config.qa if config else None
+        if not config or config.enabled == False:
+            response_dict = {
+                "meta": {
+                    "request_id": request.meta.request_id,
+                    "start_datetime": datetime.now(), # будет перезаписано
+                    "end_datetime": datetime.now(), # будет перезаписано
+                    "status": "done"
+                },
+                "status": "no_llm",
+                "messages": request.query.messages,
+                "answer": self.fallback_message,
+                "sources": request.query.sources,
+                "llm_usage": {"prompt_tokens": 0, "completion_tokens": 0}
+            }
+            self.logger.warning(f"Finished qa pipeline because not config or enabled=false for request_id={request.meta.request_id}.")
+            return QueryResponse(**response_dict)
 
         sources = request.query.sources or []
         messages = request.query.messages
@@ -29,8 +49,6 @@ class QAGenerator:
             template = config.templates.context_template or DEFAULT_CONTEXT_TEMPLATE
 
         for chunk in sources:
-            # Подстановка полей метаданных в шаблон
-            # Внимание: простая реализация f-string подстановки через format
             try:
                 formatted_chunk = template.format(
                     content=chunk.content,
@@ -46,17 +64,11 @@ class QAGenerator:
 
         llm_messages = [{"role": "system", "content": system_prompt}]
 
-        # Добавляем историю.
-        # Обычно контекст добавляется в последнее сообщение пользователя или как отдельное системное.
-        # Реализуем добавление контекста в последнее сообщение согласно user_prompt_template
-
         history = deepcopy(messages)
         last_user_msg = history[-1]
 
         if config and config.templates:
             user_template = config.templates.user_prompt_template or DEFAULT_USER_PROMPT_TEMPLATE
-            # Преобразуем историю в строку или вставляем контекст
-            # В простейшем случае, мы модифицируем последнее сообщение:
             combined_content = user_template.format(
                 messages=last_user_msg.content,
                 contexts=context_str
@@ -72,48 +84,20 @@ class QAGenerator:
         # response_text = await llm_client.agenerate(llm_messages, config.llm_config)
         # включая заполнение параметра llm_usage
         response_text = f"Это сгенерированный ответ на вопрос по {len(sources)} файлам."
+        llm_usage = {"prompt_tokens": 0, "completion_tokens": 0}
 
         response_dict = {
+            "meta": {
+                "request_id": request.meta.request_id,
+                "start_datetime": datetime.now(), # будет перезаписано
+                "end_datetime": datetime.now(), # будет перезаписано
+                "status": "done"
+            },
+            "status": "llm_rag",
+            "messages": request.query.messages,
             "answer": response_text,
-            "sources": [ # TODO временный костыль для `sources`, чтобы тестировать смотреть UI
-                {
-                    "content": "import numpy as np\nimport pandas as pd\nimport json\n\nclass Car:\n\tdef __init__(self, wheels_count: int, brand: str):\n\t\tself.wheels = wheels_count\n",
-                    "metadata": {
-                        "chunk_id": "cdb68191-fbb0-4d35-ba8a-3d9ec19a4f29",
-                        "filepath": "src/utils/helper.py",
-                        "file_name": "helper.py",
-                        "chunk_size": 390,
-                        "line_count": 20,
-                        "start_line_no": 0,
-                        "end_line_no": 20,
-                        "node_count": 0,
-                        "language": "python"
-                    }
-                },
-                {
-                    "content": "class Car:\n\tdef __init__(self, wheels_count: int, brand: str):\n\t\tself.brand = brand\n\t\tself.sound = 'bibip'\n\t\t\n\n\tdef bibip(self):\n\t\tprint(self.sound)\n",
-                    "metadata": {
-                        "chunk_id": "cdb68191-fbb0-4d35-ba8a-3d9ec19a4f29",
-                        "filepath": "src/utils/helper.py",
-                        "file_name": "helper.py",
-                        "chunk_size": 100,
-                        "line_count": 10,
-                        "start_line_no": 20,
-                        "end_line_no": 30,
-                        "node_count": 0,
-                        "language": "python"
-                    }
-                },
-            ],
-            "meta": request.meta.dict() if request.meta else {},
-            "messages": history,
-            "llm_usage": {
-                "prompt_tokens": 100, "completion_tokens": 180
-            }
+            "sources": sources,
+            "llm_usage": llm_usage
         }
-
-        if "request_id" not in response_dict["meta"] and request.meta:
-            response_dict["meta"]["request_id"] = request.meta.request_id
-
-        self.logger.info("Successful finished qa pipeline.")
-        return response_dict
+        self.logger.info(f"Successful finished qa pipeline for request_id={request.meta.request_id}.")
+        return QueryResponse(**response_dict)

@@ -12,12 +12,10 @@ class EmbeddingModel:
     Класс для векторизации текста.
     """
     def __init__(self, cfg: DictConfig) -> None:
-        # TODO реализовать настройку EmbeddingModel из cfg
         self.logger = get_logger(self.__class__.__name__)
         self.url = cfg.embeddings.url
         self.api_key = cfg.embeddings.api_key
-        self.model = cfg.embeddings.model
-
+        self.model_name = cfg.embeddings.model_name
 
     async def vectorize(self, chunks: List[Chunk], request: IndexRequest, config: IndexConfig) -> List[Dict[str, Any]]:
         """
@@ -56,7 +54,7 @@ class EmbeddingModel:
             "Authorization": f"Bearer {self.api_key}"
         }
         data = {
-            "model": self.model,
+            "model": self.model_name,
             "task": "nl2code.query",
             "truncate": False,
             "input": texts

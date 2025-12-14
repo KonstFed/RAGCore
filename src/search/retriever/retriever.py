@@ -1,5 +1,6 @@
 import re
 from typing import Any, Dict, List, Optional, Tuple
+from omegaconf import DictConfig
 from src.core.db import VectorDBClient
 from src.core.schemas import (
     QueryRequest,
@@ -14,7 +15,7 @@ class Retriever:
     """
     Класс поиска чанков (Retrieval) и расширения контекста (Expansion).
     """
-    def __init__(self):
+    def __init__(self, cfg: DictConfig):
         self.logger = get_logger(self.__class__.__name__)
         pass # TODO реализовать коннект к VectorDBClient
 

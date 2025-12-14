@@ -66,7 +66,7 @@ class MetaResponse(BaseModel):
         ...,
         description="Уникальный id ответа (должен совпадать с запросом)."
     )
-    start_detatime: datetime = Field(..., description="Время начала обработки.")
+    start_datetime: datetime = Field(..., description="Время начала обработки.")
     end_datetime: datetime = Field(..., description="Время окончания обработки.")
     status: Literal["error", "done", "timeout"]
 
@@ -110,7 +110,7 @@ class ChunkMetadata(BaseModel):
     language: Optional[Literal[
         "python", "go", "java", "cpp", "javascript", "csharp", "typescript"
     ]] = Field(None, description="Язык программирования.")
-    
+
     @property
     def file_name(self) -> str:
         return Path(self.filepath).name
@@ -348,6 +348,7 @@ class LLMUsageObject(BaseModel):
 
 class QueryResponse(BaseModel):
     meta: MetaResponse
+    status: Literal["preprocessor_filtering", "postprocessor_filtering", "no_relevance_sources", "llm_rag", "no_llm"]
     messages: List[Message]
     answer: str = Field(..., description="Сгенерированный ответ LLM.")
     sources: List[Chunk] = Field(None, description="Список чанков, использованных для генерации ответа.")

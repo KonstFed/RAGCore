@@ -1,6 +1,13 @@
-from src.core.schemas import SearchConfig
+import re
+from src.core.schemas import (
+    SearchConfig,
+    QueryResponse,
+    ContentBlockingSettings,
+    TextSanitizationSettings
+)
 from typing import Any, Dict, List, Tuple
 from src.utils.logger import get_logger
+from omegaconf import DictConfig
 
 
 class Postprocessor:
@@ -8,36 +15,41 @@ class Postprocessor:
     Класс постобработки ответа.
     Форматирование Markdown, добавление цитат, очистка.
     """
-    def __init__(self):
+    def __init__(self, cfg: DictConfig) -> None:
         self.logger = get_logger(self.__class__.__name__)
-        pass # TODO реализовать подтягивание дефолтных RegExp и словарей
+        self.fallback_message = cfg.postprocessor.fallback_message
 
-    def pipeline(self, response: Dict[str, Any], config: SearchConfig) -> Dict[str, Any]:
-        self.logger.info("Run postprocessor pipeline.")
+    def pipeline(self, response: QueryResponse, config: SearchConfig) -> QueryResponse:
+        self.logger.info(f"Run postprocessor pipeline for request_id={response.meta.request_id}.")
         if not config or not config.query_postprocessor:
             return response
 
         config = config.query_postprocessor
 
-        answer = response.get("answer", "")
-        sources = response.get("sources", [])
+        answer = response.answer
+        sources = response.sources
 
         # 1. Blacklist filtering
         if config.blacklist and config.blacklist.enabled:
-            pass # TODO реализовать
+            if self._check_blacklist(answer, config.blacklist):
+                response.meta.status = "done"
+                response.status = "postprocessor_filtering"
+                response.answer = self.fallback_message
+                self.logger.warning("Blacklist triggered. Returning filtered response.")
+                return response
 
         # 2. Sanitization (Повторная очистка)
         if config.sanitization and config.sanitization.enabled:
-            pass # TODO реаизовать
+            answer = self._sanitize(answer, config.sanitization)
 
+        # 3. Форматирование Markdown
         if config.format_markdown:
-            # 3. Форматирование Markdown
             # Проверка закрытых тегов кода ```
             if answer.count("```") % 2 != 0:
                 answer += "\n```"
 
+        # 4. Add citations (Добавление ссылок на источники в конце генеративного ответа)
         if config.add_citations:
-            # 4. Add citations (Добавление ссылок на источники в конце генеративного ответа)
             if sources and isinstance(sources, list):
                 citations = "\n\n**Sources:**\n"
                 unique_files = set()
@@ -60,7 +72,26 @@ class Postprocessor:
 
                 answer += citations
 
-        response["answer"] = answer
+        response.answer = answer
 
-        self.logger.info("Successful finished postprocessor pipeline.")
+        self.logger.info(f"Successful finished postprocessor pipeline for request_id={response.meta.request_id}.")
         return response
+
+    def _check_blacklist(self, text: str, settings: ContentBlockingSettings) -> bool:
+        if not settings.trigger_patterns:
+            return False
+        for pattern in settings.trigger_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                return True
+        return False
+
+    def _sanitize(self, text: str, settings: TextSanitizationSettings) -> str:
+        if settings.regex_patterns:
+            for pattern in settings.regex_patterns:
+                text = re.sub(pattern, settings.replacement_token, text)
+
+        if settings.stop_words:
+            for word in settings.stop_words:
+                pattern = re.compile(re.escape(word), re.IGNORECASE)
+                text = pattern.sub(settings.replacement_token, text)
+        return text
