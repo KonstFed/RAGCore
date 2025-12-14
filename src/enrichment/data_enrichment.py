@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from omegaconf import DictConfig
 from src.core.service import BaseService
 from src.core.schemas import IndexRequest, IndexConfig, IndexJobResponse, Chunk
@@ -38,27 +39,49 @@ class DataEnrichment(BaseService):
         """
         self.logger.info(f"Starting indexing job: {request.meta.request_id} for repo: {request.repo_url}")
 
-        response = {
-            "job_id": request.meta.request_id,
-            "status": "queued"
-        }
+        start_time = datetime.now()
+        index_response = request
 
         try:
-            repo_path = await self.loader.clone_repository(request)
+            index_response = await self.loader.clone_repository(request)
+            if index_response.meta.status == "error":
+                self._finalize_response(index_response, start_time)
 
-            chunks = self.parser.pipeline(repo_path, request, config)
+            index_response, chunks = self.parser.pipeline(config, index_response)
 
-            vectors = await self.vectorizer.vectorize(chunks, request, config)
+            index_response, vectors = await self.vectorizer.vectorize(chunks, config, index_response)
+            if index_response.meta.status == "error":
+                self._finalize_response(index_response, start_time)
 
-            response = await self.loader.save_vectors(vectors, request)
+            index_response = await self.loader.save_vectors(vectors, index_response)
+            if index_response.meta.status == "error":
+                self._finalize_response(index_response, start_time)
 
-            response = {
-                "job_id": request.meta.request_id,
-                "status": "processing"
-            }
+            return self._finalize_response(index_response, start_time)
 
-            self.logger.info(f"Job {request.meta.request_id} completed successfully.")
         except Exception as e:
             self.logger.exception(f"Critical error in job {request.meta.request_id}")
 
         return IndexJobResponse(**response)
+
+    def _finalize_response(
+        self,
+        response: IndexJobResponse,
+        start_time: datetime
+    ) -> IndexJobResponse:
+        """
+        Вспомогательный метод для обновления метаданных перед возвратом ответа.
+        Гарантирует, что request_id совпадает и проставляет время выполнения.
+        """
+        end_time = datetime.now()
+
+        response.meta.start_datetime = start_time
+        response.meta.end_datetime = end_time
+        response.meta.status = "done" if not response.meta.status else response.meta.status
+
+        self.logger.info(
+            f"Job {response.meta.request_id} completed. "
+            f"Status: {response.job_status.status}. "
+            f"Duration: {(end_time - start_time).total_seconds():.2f}s"
+        )
+        return response
