@@ -16,6 +16,8 @@ class EmbeddingModel:
         self.url = cfg.embeddings.url
         self.api_key = cfg.embeddings.api_key
         self.model_name = cfg.embeddings.model_name
+        self.batch_size = cfg.embeddings.batch_size
+        self.dump_dir = cfg.paths.temp_chunks_storage
 
     async def vectorize(
         self,
@@ -34,7 +36,7 @@ class EmbeddingModel:
         self.logger.info(f"Start vectorize chunks for request_id={index_response.meta.request_id}.")
 
         try:
-            embeddings = self.embed(texts)
+            embeddings = self.embed_chunks(texts)
 
             for chunk, vector in zip(chunks, embeddings):
                 payload = chunk.metadata.model_dump(mode='json')
@@ -50,6 +52,8 @@ class EmbeddingModel:
                 }
                 vectors_data.append(vector_record)
 
+            self._save_chunks_locally(vectors_data, index_response.meta.request_id)
+
             index_response.job_status.status = "vectorized"
             index_response.meta.status = "done"
             index_response.job_status.chunks_processed = len(vectors_data)
@@ -62,7 +66,44 @@ class EmbeddingModel:
 
         return index_response, vectors_data
 
-    def embed(self, texts: List[str]) -> List[List[float]]:
+    def embed_chunks(self, texts: List[str]) -> List[List[float]]:
+        """Векторизует чанки из репозитория с батчевой обработкой."""
+        all_embeddings = []
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+
+        for i in range(0, len(texts), self.batch_size):
+            batch_texts = texts[i : i + self.batch_size]
+
+            data = {
+                "model": self.model_name,
+                "task": "nl2code.passage",
+                "truncate": False,
+                "input": batch_texts
+            }
+
+            try:
+                response = requests.post(self.url, headers=headers, data=json.dumps(data))
+                response.raise_for_status()
+
+                response_data = response.json()
+
+                if 'data' in response_data:
+                    batch_embeddings = [r.get('embedding') for r in response_data['data']]
+                    all_embeddings.extend(batch_embeddings)
+                else:
+                    self.logger.error(f"Unexpected response format for batch starting at index {i}: {response_data}")
+
+            except requests.exceptions.RequestException as e:
+                self.logger.error(f"Request failed for batch starting at index {i}: {e}")
+
+        return all_embeddings
+
+    def embed_query(self, texts: List[str]) -> List[List[float]]:
+        """Векторизует пользовательский запрос."""
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
@@ -73,9 +114,25 @@ class EmbeddingModel:
             "truncate": False,
             "input": texts
         }
-        # response = requests.post(self.url, headers=headers, data=json.dumps(data))
-        # return [r.get('embedding') for r in response.json()['data']]
-        import numpy as np
-        return [
-            np.random.random(1536) for _ in range(len(texts))
-        ]
+        response = requests.post(self.url, headers=headers, data=json.dumps(data))
+        return [r.get('embedding') for r in response.json()['data']]
+
+    def _save_chunks_locally(self, chunks: List[Dict[str, Any]], request_id: str) -> None:
+        """
+        Сериализует список чанков в JSON и сохраняет на диск.
+        Возвращает путь к созданному файлу.
+        """
+        try:
+            output_dir = Path(self.dump_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            filename = f"{request_id}.json"
+            file_path = output_dir / filename
+
+            data_to_save = [chunk.model_dump(mode="json") for chunk in chunks]
+
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(data_to_save, f, ensure_ascii=False, indent=2)
+
+        except Exception as e:
+            self.logger.error(f"Failed to save chunks locally for request_id={request_id}: {e}")

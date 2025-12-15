@@ -14,6 +14,7 @@ embeddings:
   model_name: "jina-code-embeddings-1.5b"
   dimension: 1536
   distance: "Cosine"
+  batch_size: 30
 
 paths:
   temp_chunks_storage: "/tmp/chunks"

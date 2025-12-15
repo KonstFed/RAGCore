@@ -26,6 +26,7 @@ class LoaderConnecter:
         self.download_path = cfg.paths.temp_repo_storage
         self.collection_name = cfg.database.collection_name
         self.vector_db_client = VectorDBClient(cfg)
+        self.createdir(self.download_path)
 
     async def clone_repository(self, request: IndexRequest) -> IndexJobResponse:
         """
@@ -138,6 +139,11 @@ class LoaderConnecter:
 
         except Exception as e:
             return self._error_response(index_job_response, f"Error while saving vectors to QDrant: {e}")
+
+    def createdir(self, directory: str) -> None:
+        """Метод созданий вспомогательной директории."""
+        if not os.path.exists(directory):
+            os.makedirs(directory)
 
     def cleanup(self, path: str) -> None:
         """Метод для ручной очистки, если требуется"""

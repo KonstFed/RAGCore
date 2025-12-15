@@ -41,7 +41,7 @@ class Retriever:
         retriever_config = config.retriever
         query_text = request.query.messages[-1].content
 
-        query_vector = self.embedder.embed([query_text])[0]
+        query_vector = self.embedder.embed_query([query_text])[0]
 
         qdrant_filter = None
         if config.filtering and config.filtering.enabled and config.filtering.filter:
