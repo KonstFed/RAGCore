@@ -1,4 +1,5 @@
-import random
+import json
+import requests
 from datetime import datetime
 from omegaconf import DictConfig
 from src.core.schemas import QueryRequest, QueryResponse, SearchConfig, RerankerConfig
@@ -36,7 +37,7 @@ class Reranker:
         query = request.query.messages[-1].content
         documents_text = [chunk.content for chunk in request.query.sources]
 
-        status_code, response_json = self._rerank(query_text, documents_text, config)
+        status_code, response_json = self._rerank(query, documents_text, config)
         if status_code != 200:
             self.logger.warning(
                 f"Reranker API returned {status_code} for request_id={request.meta.request_id}. "
