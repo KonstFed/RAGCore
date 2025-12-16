@@ -1,4 +1,5 @@
 from omegaconf import DictConfig
+from pathlib import Path
 import requests
 import json
 from src.core.schemas import Chunk
@@ -81,7 +82,7 @@ class EmbeddingModel:
             data = {
                 "model": self.model_name,
                 "task": "nl2code.passage",
-                "truncate": False,
+                "truncate": True,
                 "input": batch_texts
             }
 
@@ -111,10 +112,12 @@ class EmbeddingModel:
         data = {
             "model": self.model_name,
             "task": "nl2code.query",
-            "truncate": False,
+            "truncate": True,
             "input": texts
         }
         response = requests.post(self.url, headers=headers, data=json.dumps(data))
+        if response.status_code != 200:
+            self.logger.error(f"Failed to get embedding for query: status={response.status_code}, response={response.text}")
         return [r.get('embedding') for r in response.json()['data']]
 
     def _save_chunks_locally(self, chunks: List[Dict[str, Any]], request_id: str) -> None:
@@ -129,10 +132,9 @@ class EmbeddingModel:
             filename = f"{request_id}.json"
             file_path = output_dir / filename
 
-            data_to_save = [chunk.model_dump(mode="json") for chunk in chunks]
 
             with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(data_to_save, f, ensure_ascii=False, indent=2)
+                json.dump(chunks, f, ensure_ascii=False, indent=2)
 
         except Exception as e:
             self.logger.error(f"Failed to save chunks locally for request_id={request_id}: {e}")
