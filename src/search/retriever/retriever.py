@@ -1,5 +1,4 @@
-import re
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Union
 from omegaconf import DictConfig
 from src.core.db import VectorDBClient
 from src.core.embedder import EmbeddingModel
@@ -9,7 +8,8 @@ from src.core.schemas import (
     Chunk,
     FilterNode,
     FilterGroup,
-    FilterCondition
+    FilterCondition,
+    ChunkMetadata,
 )
 from src.utils.logger import get_logger
 
@@ -88,14 +88,14 @@ class Retriever:
                     )
                     found_chunks.append(chunk)
                 except Exception as parse_e:
-                    self.logger.warning(
+                    self.logger.info(
                         f"Failed to parse chunk from DB response: {parse_e}"
                         f"for request_id={request.meta.request_id}."
                     )
 
         request.query.sources = found_chunks
         self.logger.info(
-            f"Successful finished retriever search"
+            f"Successful finished retriever search with {len(found_chunks)} chunks "
             f"for request_id={request.meta.request_id}."
         )
         return request
@@ -113,6 +113,7 @@ class Retriever:
         if not request.query.sources:
             return request
 
+
         self.logger.info(f"Run context expansion for request_id={request.meta.request_id}.")
 
         expanded_sources = []
@@ -120,7 +121,7 @@ class Retriever:
         for chunk in request.query.sources:
             expanded_sources.append(chunk)
 
-            if exp_cfg.before_chunk > 0:
+            if config.before_chunk > 0:
                 prev_chunks = self._fetch_neighbors(
                     chunk=chunk,
                     direction="before",
