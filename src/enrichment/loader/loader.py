@@ -93,7 +93,7 @@ class LoaderConnecter:
         if not vectors:
             return self._error_response(index_job_response, "No vectors to save into QDrant.")
 
-        collection_name = index_job_response.job_status.repo_path or self.collection_name
+        collection_name = self.collection_name
         self.logger.info(
             f"Start saving {len(vectors)} vectors into QDrant collection '{collection_name}'"
             f"for request_id={index_job_response.meta.request_id}."
@@ -158,7 +158,7 @@ class LoaderConnecter:
         return index_job_response
 
     def _success_response(self, index_job_response: IndexJobResponse, success_message: str) -> IndexJobResponse:
-        self.logger.error(f"{success_message} for request_id={index_job_response.meta.request_id}.")
+        self.logger.info(f"{success_message} for request_id={index_job_response.meta.request_id}.")
         index_job_response.meta.status = "done"
         index_job_response.job_status.status = "saved_to_qdrant"
         return index_job_response
