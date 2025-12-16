@@ -54,7 +54,7 @@ with tab_index:
         with st.spinner('Индексирую...'):
             try:
                 response = asyncio.run(assistant.index(request, config))
-                st.success(f"Репозиторий с request_id={response.meta.request_id} в статусе '{response.status}'")
+                st.success(f"Репозиторий с request_id={response.meta.request_id} в статусе '{response.job_status.status}'")
             except Exception as e:
                 st.error(f"Произошла ошибка: {e}")
 
