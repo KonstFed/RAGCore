@@ -2,12 +2,12 @@ import os
 import fnmatch
 import json
 from pathlib import Path
-from typing import List, Optional
-
+from typing import List, Optional, Tuple
+from omegaconf import DictConfig
 from astchunk import ASTChunkBuilder
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from src.core.schemas import IndexRequest, Chunk, ChunkMetadata, IndexConfig
+from src.core.schemas import IndexRequest, Chunk, ChunkMetadata, IndexConfig, IndexJobResponse
 from src.utils.logger import get_logger
 
 
@@ -16,23 +16,20 @@ class RepoParser:
     Отвечает за обход файловой системы и чанкинг кода.
     """
 
-    def __init__(self, cfg):
+    def __init__(self, cfg: DictConfig) -> None:
+        self.logger = get_logger(self.__class__.__name__)
         self.default_exclude = cfg.parser.default_exclude
         self.extension_map = cfg.parser.extension_map
         self.dump_dir = cfg.paths.temp_chunks_storage
 
-        self.logger = get_logger(self.__class__.__name__)
-
     def pipeline(
-        self, repo_path: str, request: IndexRequest, config: IndexConfig
-    ) -> List[Chunk]:
+        self, config: IndexConfig, index_job_response: IndexJobResponse
+    ) -> Tuple[IndexJobResponse, List[Chunk]]:
         """
         Запускает процесс парсинга репозитория.
         """
         chunks = []
-        # TODO: раньше тут был почему-то IndexConfig() и `config` просто игнорился
-        # если я неправильно исправил подправьте и протестируйте
-        config = request.config or config
+
         exclude_patterns = set(self.default_exclude)
         if config.exclude_patterns:
             exclude_patterns.update(config.exclude_patterns)
@@ -53,7 +50,8 @@ class RepoParser:
             separators=splitter_cfg.get("separators"),
         )
 
-        self.logger.info(f"Start parsing repository {repo_path}.")
+        repo_path = index_job_response.job_status.repo_path
+        self.logger.info(f"Start parsing repository {repo_path} for request_id={index_job_response.meta.request_id}.")
 
         for root, dirs, files in os.walk(repo_path):
             dirs[:] = [d for d in dirs if not self._is_excluded(d, exclude_patterns)]
@@ -70,13 +68,13 @@ class RepoParser:
                 )
                 chunks.extend(file_chunks)
 
-        self.logger.info(f"Successful done parsing repository {repo_path}.")
+        self.logger.info(f"Successful done parsing repository {repo_path} for request_id={index_job_response.meta.request_id}.")
+        index_job_response.job_status.status = "parsed"
 
-        chunks_path = self._save_chunks_locally(chunks, str(request.meta.request_id))
+        chunks_path = self._save_chunks_locally(chunks, str(index_job_response.meta.request_id))
+        self.logger.info(f"Successful dump chunks into local storage: {chunks_path} for request_id={index_job_response.meta.request_id}")
 
-        self.logger.info(f"Successful dump chunks into local storage: {chunks_path}")
-
-        return chunks
+        return index_job_response, chunks
 
     def _save_chunks_locally(self, chunks: List[Chunk], request_id: str) -> str:
         """

@@ -29,22 +29,10 @@ class TextSplitterConfig(BaseModel):
 
 class EmbeddingConfig(BaseModel):
     model_name: Literal[
-        "e5-large", "qwen3-embedding-0.6b", "qwen3-embedding-4b"
+        "e5-large", "qwen3-embedding-0.6b", "qwen3-embedding-4b", "jina-code-embeddings-1.5b"
     ] = Field("qwen3-embedding-0.6b")
     dimensions: int = Field(1024)
     max_tokens: int = Field(8192)
-
-
-class IndexJobResponse(BaseModel):
-    job_id: Optional[UUID4] = None
-    status: Optional[Literal["queued", "processing"]] = None
-
-
-class IndexJobStatus(BaseModel):
-    job_id: Optional[str] = None
-    status: Optional[Literal["queued", "processing", "completed", "failed"]] = None
-    chunks_processed: Optional[int] = None
-    error: Optional[str] = None
 
 
 class Message(BaseModel):
@@ -66,9 +54,22 @@ class MetaResponse(BaseModel):
         ...,
         description="Уникальный id ответа (должен совпадать с запросом)."
     )
-    start_detatime: datetime = Field(..., description="Время начала обработки.")
+    start_datetime: datetime = Field(..., description="Время начала обработки.")
     end_datetime: datetime = Field(..., description="Время окончания обработки.")
     status: Literal["error", "done", "timeout"]
+
+
+class IndexJobStatus(BaseModel):
+    status: Optional[Literal["failed", "loaded", "parsed", "vectorized", "saved_to_qdrant"]] = None
+    chunks_processed: Optional[int] = None
+    repo_path: str = None
+    description_error: Optional[str] = None
+
+
+class IndexJobResponse(BaseModel):
+    repo_url: HttpUrl = Field(..., example="https://github.com/owner/repo")
+    meta: MetaResponse
+    job_status: IndexJobStatus
 
 
 class IndexConfig(BaseModel):
@@ -110,7 +111,7 @@ class ChunkMetadata(BaseModel):
     language: Optional[Literal[
         "python", "go", "java", "cpp", "javascript", "csharp", "typescript"
     ]] = Field(None, description="Язык программирования.")
-    
+
     @property
     def file_name(self) -> str:
         return Path(self.filepath).name
@@ -335,7 +336,7 @@ class QueryObject(BaseModel):
 
 
 class QueryRequest(BaseModel):
-    repo_url: str = Field(..., description="URL репозитория.")
+    repo_url: HttpUrl = Field(..., example="https://github.com/owner/repo")
     meta: MetaRequest
     query: QueryObject
     stream: bool = False
@@ -348,6 +349,7 @@ class LLMUsageObject(BaseModel):
 
 class QueryResponse(BaseModel):
     meta: MetaResponse
+    status: Literal["preprocessor_filtering", "postprocessor_filtering", "no_relevance_sources", "llm_rag", "no_llm"]
     messages: List[Message]
     answer: str = Field(..., description="Сгенерированный ответ LLM.")
     sources: List[Chunk] = Field(None, description="Список чанков, использованных для генерации ответа.")

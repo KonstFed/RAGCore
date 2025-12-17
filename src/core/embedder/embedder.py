@@ -1,9 +1,10 @@
 from omegaconf import DictConfig
+from pathlib import Path
 import requests
 import json
 from src.core.schemas import Chunk
-from typing import List, Dict, Any
-from src.core.schemas import Chunk, IndexRequest, IndexConfig
+from typing import List, Dict, Any, Tuple
+from src.core.schemas import Chunk, IndexRequest, IndexConfig, IndexJobResponse
 from src.utils.logger import get_logger
 
 
@@ -12,14 +13,19 @@ class EmbeddingModel:
     Класс для векторизации текста.
     """
     def __init__(self, cfg: DictConfig) -> None:
-        # TODO реализовать настройку EmbeddingModel из cfg
         self.logger = get_logger(self.__class__.__name__)
         self.url = cfg.embeddings.url
         self.api_key = cfg.embeddings.api_key
-        self.model = cfg.embeddings.model
+        self.model_name = cfg.embeddings.model_name
+        self.batch_size = cfg.embeddings.batch_size
+        self.dump_dir = cfg.paths.temp_chunks_storage
 
-
-    async def vectorize(self, chunks: List[Chunk], request: IndexRequest, config: IndexConfig) -> List[Dict[str, Any]]:
+    async def vectorize(
+        self,
+        chunks: List[Chunk],
+        config: IndexConfig,
+        index_response: IndexJobResponse
+    ) -> Tuple[IndexJobResponse, List[Dict[str, Any]]]:
         """
         Принимает список чанков, возвращает структуру готовую для вставки в Векторную БД.
         Формат возврата: List[{id: uuid, vector: list, payload: dict}]
@@ -28,38 +34,107 @@ class EmbeddingModel:
 
         texts = [chunk.content for chunk in chunks]
 
-        self.logger.info("Start vectorize chunks.")
-        embeddings = self.embed(texts)
+        self.logger.info(f"Start vectorize chunks for request_id={index_response.meta.request_id}.")
 
-        for chunk, vector in zip(chunks, embeddings):
-            payload = chunk.metadata.model_dump(mode='json')
+        try:
+            embeddings = self.embed_chunks(texts)
 
-            payload['repo_url'] = str(request.repo_url)
-            payload['request_id'] = str(request.meta.request_id)
-            payload['content'] = chunk.content
+            for chunk, vector in zip(chunks, embeddings):
+                payload = chunk.metadata.model_dump(mode='json')
 
-            vector_record = {
-                "id": str(chunk.metadata.chunk_id),
-                "vector": vector,
-                "payload": payload
+                payload['repo_url'] = str(index_response.repo_url)
+                payload['request_id'] = str(index_response.meta.request_id)
+                payload['content'] = chunk.content
+
+                vector_record = {
+                    "id": str(chunk.metadata.chunk_id),
+                    "vector": vector,
+                    "payload": payload
+                }
+                vectors_data.append(vector_record)
+
+            self._save_chunks_locally(vectors_data, index_response.meta.request_id)
+
+            index_response.job_status.status = "vectorized"
+            index_response.meta.status = "done"
+            index_response.job_status.chunks_processed = len(vectors_data)
+            self.logger.info(f"Successful done vectorize chunks for request_id={index_response.meta.request_id}.")
+        except Exception as e:
+            self.logger.error(f"Error vectorize chunks for request_id={index_response.meta.request_id} with body: {e}")
+            index_response.job_status.status = "vectorized"
+            index_response.meta.status = "error"
+            return index_response, []
+
+        return index_response, vectors_data
+
+    def embed_chunks(self, texts: List[str]) -> List[List[float]]:
+        """Векторизует чанки из репозитория с батчевой обработкой."""
+        all_embeddings = []
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+
+        for i in range(0, len(texts), self.batch_size):
+            batch_texts = texts[i : i + self.batch_size]
+
+            data = {
+                "model": self.model_name,
+                "task": "nl2code.passage",
+                "truncate": True,
+                "input": batch_texts
             }
-            vectors_data.append(vector_record)
 
-        self.logger.info(f"Successful done vectorize chunks for request_id={request.meta.request_id}.")
+            try:
+                response = requests.post(self.url, headers=headers, data=json.dumps(data))
+                response.raise_for_status()
 
-        return vectors_data
+                response_data = response.json()
 
+                if 'data' in response_data:
+                    batch_embeddings = [r.get('embedding') for r in response_data['data']]
+                    all_embeddings.extend(batch_embeddings)
+                else:
+                    self.logger.error(f"Unexpected response format for batch starting at index {i}: {response_data}")
 
-    def embed(self, texts: List[str]) -> List[List[float]]:
+            except requests.exceptions.RequestException as e:
+                self.logger.error(f"Request failed for batch starting at index {i}: {e}")
+
+        return all_embeddings
+
+    def embed_query(self, texts: List[str]) -> List[List[float]]:
+        """Векторизует пользовательский запрос."""
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
         }
         data = {
-            "model": self.model,
+            "model": self.model_name,
             "task": "nl2code.query",
-            "truncate": False,
+            "truncate": True,
             "input": texts
         }
         response = requests.post(self.url, headers=headers, data=json.dumps(data))
+        if response.status_code != 200:
+            self.logger.error(f"Failed to get embedding for query: status={response.status_code}, response={response.text}")
         return [r.get('embedding') for r in response.json()['data']]
+
+    def _save_chunks_locally(self, chunks: List[Dict[str, Any]], request_id: str) -> None:
+        """
+        Сериализует список чанков в JSON и сохраняет на диск.
+        Возвращает путь к созданному файлу.
+        """
+        try:
+            output_dir = Path(self.dump_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            filename = f"{request_id}.json"
+            file_path = output_dir / filename
+
+
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(chunks, f, ensure_ascii=False, indent=2)
+
+        except Exception as e:
+            self.logger.error(f"Failed to save chunks locally for request_id={request_id}: {e}")

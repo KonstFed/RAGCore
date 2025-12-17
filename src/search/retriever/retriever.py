@@ -1,11 +1,15 @@
-import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Union
+from omegaconf import DictConfig
 from src.core.db import VectorDBClient
+from src.core.embedder import EmbeddingModel
 from src.core.schemas import (
     QueryRequest,
     SearchConfig,
     Chunk,
-    FilterNode
+    FilterNode,
+    FilterGroup,
+    FilterCondition,
+    ChunkMetadata,
 )
 from src.utils.logger import get_logger
 
@@ -14,15 +18,20 @@ class Retriever:
     """
     Класс поиска чанков (Retrieval) и расширения контекста (Expansion).
     """
-    def __init__(self):
+    def __init__(self, cfg: DictConfig):
         self.logger = get_logger(self.__class__.__name__)
-        pass # TODO реализовать коннект к VectorDBClient
+        self.vector_db = VectorDBClient(cfg)
+        self.embedder = EmbeddingModel(cfg)
+        self.collection_name = cfg.database.collection_name
+        # TODO сделать матчинг url пользователя с collections в QDrant
+        self.collection_name_list = {"https://github.com/KonstFed/RAGCore": "KonstFed-RAGCore-main"}
 
     def retrieval(self, request: QueryRequest, config: SearchConfig) -> QueryRequest:
         """
         Выполняет поиск релевантных чанков в базе данных.
         """
-        self.logger.info("Run retriever search.")
+        self.logger.info(f"Run retriever search for request_id={request.meta.request_id}.")
+
         if request.query.sources is None:
             request.query.sources = []
 
@@ -32,22 +41,69 @@ class Retriever:
         retriever_config = config.retriever
         query_text = request.query.messages[-1].content
 
-        # TODO поход в VectorDBClient
+        query_vector = self.embedder.embed_query([query_text])[0]
 
-        if config.filtering and config.filtering.enabled:
-            request.query.sources = self._apply_filtering(
-                request.query.sources,
-                config.filtering.filter
+        qdrant_filter = None
+        if config.filtering and config.filtering.enabled and config.filtering.filter:
+            qdrant_filter = self._convert_to_qdrant_filter(config.filtering.filter)
+            self.logger.debug(f"Applied QDrant filter: {qdrant_filter}")
+
+        # TODO проработать получение названия collections из запроса пользователя
+        collection_name = self.collection_name_list.get(request.repo_url, self.collection_name)
+
+        try:
+            search_result = self.vector_db.search(
+                collection_name=collection_name,
+                vector=query_vector,
+                top_k=retriever_config.size,
+                query_filter=qdrant_filter,
+                with_payload=True
             )
+        except Exception as e:
+            self.logger.error(f"Error during QDrant search: {e}")
+            return request
 
-        self.logger.info("Successful finished retriever search.")
+        found_chunks = []
+        if "result" in search_result:
+            for item in search_result["result"]:
+                score = item.get("score", 0.0)
+                payload = item.get("payload", {})
+
+                try:
+                    meta = ChunkMetadata(
+                        chunk_id=item.get("id"), # или payload.get("chunk_id")
+                        filepath=payload.get("filepath"),
+                        start_line_no=payload.get("start_line_no"),
+                        end_line_no=payload.get("end_line_no"),
+                        language=payload.get("language"),
+                        chunk_size=payload.get("chunk_size"),
+                        line_count=payload.get("line_count"),
+                        node_count=payload.get("node_count")
+                    )
+
+                    chunk = Chunk(
+                        content=payload.get("content", ""),
+                        metadata=meta,
+                        retrieval_relevance_score=score
+                    )
+                    found_chunks.append(chunk)
+                except Exception as parse_e:
+                    self.logger.info(
+                        f"Failed to parse chunk from DB response: {parse_e}"
+                        f"for request_id={request.meta.request_id}."
+                    )
+
+        request.query.sources = found_chunks
+        self.logger.info(
+            f"Successful finished retriever search with {len(found_chunks)} chunks "
+            f"for request_id={request.meta.request_id}."
+        )
         return request
 
     def expansion(self, request: QueryRequest, config: SearchConfig) -> QueryRequest:
         """
         Расширяет найденные чанки (добавляет строки кода до и после).
         """
-        self.logger.info("Run context expansion.")
         if not config or \
            not config.context_expansion or \
            not config.context_expansion.enabled:
@@ -57,46 +113,149 @@ class Retriever:
         if not request.query.sources:
             return request
 
-        # TODO реализовать запрос в VectorDBClient на подтягивание соседних чанков
-        self.logger.info("Successful finished context expansion.")
+
+        self.logger.info(f"Run context expansion for request_id={request.meta.request_id}.")
+
+        expanded_sources = []
+
+        for chunk in request.query.sources:
+            expanded_sources.append(chunk)
+
+            if config.before_chunk > 0:
+                prev_chunks = self._fetch_neighbors(
+                    chunk=chunk,
+                    direction="before",
+                    count=config.before_chunk
+                )
+                for pc in reversed(prev_chunks):
+                    expanded_sources.insert(expanded_sources.index(chunk), pc)
+
+            if config.after_chunk > 0:
+                next_chunks = self._fetch_neighbors(
+                    chunk=chunk,
+                    direction="after",
+                    count=config.after_chunk
+                )
+                expanded_sources.extend(next_chunks)
+
+        unique_sources = self._deduplicate_chunks(expanded_sources)
+        request.query.sources = unique_sources
+
+        self.logger.info(
+            f"Successful finished context expansion."
+            f"Total chunks: {len(request.query.sources)}"
+        )
         return request
 
-    def _apply_filtering(self, chunks: List[Chunk], filter_node: Optional[FilterNode]) -> List[Chunk]:
-        if not filter_node or not chunks:
-            return chunks
+    def _fetch_neighbors(self, chunk: Chunk, direction: Literal["before", "after"], count: int) -> List[Chunk]:
+        """
+        Ищет соседние чанки в том же файле.
+        """
+        file_filter = {"key": "filepath", "match": {"value": chunk.metadata.filepath}}
+        repo_filter = {"key": "repo_url", "match": {"value": chunk.metadata.repo_url}} if hasattr(chunk.metadata, 'repo_url') else None
 
-        filtered_chunks = []
-        for chunk in chunks:
-            if self._evaluate_filter(chunk, filter_node):
-                filtered_chunks.append(chunk)
-        return filtered_chunks
+        range_condition = {}
+        sort_desc = False
 
-    def _evaluate_filter(self, chunk: Chunk, node: FilterNode) -> bool:
+        if direction == "before":
+            # Ищем чанки, где end_line_no < текущего start_line_no
+            # Сортируем по убыванию (desc), чтобы взять ближайший сверху
+            range_condition = {
+                "key": "end_line_no",
+                "range": {"lt": chunk.metadata.start_line_no}
+            }
+            # QDrant scroll не поддерживает сортировку напрямую так, как search.
+            # Но мы можем использовать фильтр.
+            # Для точного порядка "ближайший сосед" в QDrant нужен order_by (доступен в v1.10+).
+            # Если версия старая, можно запросить больше и отсортировать в коде.
+        else:
+            range_condition = {
+                "key": "start_line_no",
+                "range": {"gt": chunk.metadata.end_line_no}
+            }
 
-        if hasattr(node, 'operator') and hasattr(node, 'values') and isinstance(node.values, list):
-            results = [self._evaluate_filter(chunk, sub_node) for sub_node in node.values]
+        must_conditions = [file_filter, range_condition]
+        qdrant_filter = {"must": must_conditions}
+
+        try:
+            result = self.vector_db.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=qdrant_filter,
+                limit=count + 2
+            )
+        except Exception as e:
+            self.logger.warning(f"Error when call QDrant scroll for expand chunks: {e}.")
+            return []
+
+        neighbors = []
+        if "result" in result and "points" in result["result"]:
+            points = result["result"]["points"]
+
+            for pt in points:
+                payload = pt.get("payload", {})
+                try:
+                    meta = ChunkMetadata(
+                        chunk_id=pt.get("id"),
+                        filepath=payload.get("filepath"),
+                        start_line_no=payload.get("start_line_no"),
+                        end_line_no=payload.get("end_line_no"),
+                        language=payload.get("language"),
+                        chunk_size=payload.get("chunk_size")
+                    )
+                    neighbors.append(Chunk(content=payload.get("content", ""), metadata=meta))
+                except:
+                    continue
+
+        # Локальная сортировка, так как Scroll не гарантирует порядок по start_line_no
+        if direction == "before":
+            neighbors.sort(key=lambda x: x.metadata.end_line_no, reverse=True)
+        else:
+            neighbors.sort(key=lambda x: x.metadata.start_line_no)
+
+        return neighbors[:count]
+
+    def _deduplicate_chunks(self, chunks: List[Chunk]) -> List[Chunk]:
+        """Удаляет дубликаты чанков по ID."""
+        seen = set()
+        unique = []
+        for c in chunks:
+            cid = str(c.metadata.chunk_id)
+            if cid not in seen:
+                seen.add(cid)
+                unique.append(c)
+        return unique
+
+    def _convert_to_qdrant_filter(self, node: Union[FilterNode, FilterGroup, FilterCondition]) -> Dict[str, Any]:
+        """
+        Рекурсивно преобразует FilterNode в структуру QDrant Filter.
+        """
+        if isinstance(node, FilterGroup) or (hasattr(node, "operator") and node.operator in ["and", "or"]):
+            clauses = [self._convert_to_qdrant_filter(child) for child in node.values]
+            
             if node.operator == "and":
-                return all(results)
+                return {"must": clauses}
             elif node.operator == "or":
-                return any(results)
-            return False
+                return {"should": clauses}
 
-        elif hasattr(node, 'name') and hasattr(node, 'value'):
-            chunk_val = getattr(chunk.metadata, node.name, None)
-            if chunk_val is None:
-                return False
-            return self._compare(chunk_val, node.operator, node.value)
+        if isinstance(node, FilterCondition) or (hasattr(node, "name") and hasattr(node, "value")):
+            key = node.name
+            val = node.value
+            op = node.operator
 
-        return True
+            if op == "eq":
+                return {"key": key, "match": {"value": val}}
+            elif op == "neq":
+                return {"must_not": [{"key": key, "match": {"value": val}}]}
+            elif op == "in":
+                return {"key": key, "match": {"any": val if isinstance(val, list) else [val]}}
+            elif op in ["gt", "gte", "lt", "lte"]:
+                range_op = {
+                    "gt": "gt", "gte": "gte", "lt": "lt", "lte": "lte"
+                }.get(op)
+                return {"key": key, "range": {range_op: val}}
+            elif op == "contains":
+                 return {"key": key, "match": {"text": str(val)}}
+            elif op == "wildcard":
+                 return {"key": key, "match": {"value": val}}
 
-    def _compare(self, actual, op, expected) -> bool:
-        if op == "eq": return actual == expected
-        if op == "neq": return actual != expected
-        if op == "gt": return actual > expected
-        if op == "gte": return actual >= expected
-        if op == "lt": return actual < expected
-        if op == "lte": return actual <= expected
-        if op == "in": return actual in expected
-        if op == "contains": return expected in str(actual)
-        if op == "wildcard": return re.match(str(expected).replace("*", ".*"), str(actual))
-        return False
+        return {}

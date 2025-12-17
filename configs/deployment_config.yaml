@@ -11,9 +11,10 @@ embeddings:
   default_provider: "jina"
   url: "https://api.jina.ai/v1/embeddings"
   api_key: "${oc.env:JINA_API_KEY, 'sk-placeholder'}"
-  model: "jina-code-embeddings-1.5b"
+  model_name: "jina-code-embeddings-1.5b"
   dimension: 1536
   distance: "Cosine"
+  batch_size: 30
 
 paths:
   temp_chunks_storage: "/tmp/chunks"
@@ -30,3 +31,21 @@ parser:
     .go: "go"
     .cpp: "cpp"
     .cs: "csharp"
+
+preprocessor:
+  fallback_message: "К сожалению, на данный вопрос я пока не могу ответить. Попробуйте переформулировать Ваш вопрос."
+
+postprocessor:
+  fallback_message: "К сожалению, LLM сгенерировала запрещённый контент. Попробуйте переформулировать Ваш вопрос."
+
+reranker:
+  model_name: "jina-reranker-v3"
+  threshold: 0.5
+  top_k: 3
+  url: "https://api.jina.ai/v1/rerank"
+  api_key: "${oc.env:JINA_API_KEY, 'sk-placeholder'}"
+  fallback_message: "Все источники были отфильтрованы моделью ранжирования."
+  timeout: 10
+
+qa:
+  fallback_message: "Стандартная заглушка при выключенном модуле QA LLM."

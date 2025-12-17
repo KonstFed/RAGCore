@@ -1,5 +1,6 @@
 import os
-
+from omegaconf import DictConfig
 
 class LLMClient:
-    pass
+    def __init__(self, cfg: DictConfig) -> None:
+        pass
