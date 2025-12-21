@@ -90,12 +90,12 @@ with tab_chat:
                     "replacement_token": ""
                 }
             },
-            # отключаем rewriter для чистого запроса
+            # временно отключаем rewriter для запроса
             "query_rewriter": {"enabled": False},
             "retriever": {"enabled": True},
             "filtering": {"enabled": True},
-            # отключаем reranker (внешний API нестабилен)
-            "reranker": {"enabled": False},
+            # отключаем / включаем reranker (если внешний API нестабилен)
+            "reranker": {"enabled": True},
             "context_expansion": {"enabled": True},
             "qa": {"enabled": True},
             "query_postprocessor": {
