@@ -12,17 +12,33 @@ embeddings:
   url: "https://api.jina.ai/v1/embeddings"
   api_key: "${oc.env:JINA_API_KEY, 'sk-placeholder'}"
   model_name: "jina-code-embeddings-1.5b"
-  dimension: 1536
+  dimension: 1536 # если jina - 1536, если sentence-transformers - 768
   distance: "Cosine"
   batch_size: 30
+  # Локальная CPU-модель для fallback (Sentence-Transformers)
+  local_model: "flax-sentence-embeddings/st-codesearch-distilroberta-base"
 
 paths:
   temp_chunks_storage: "/tmp/chunks"
   temp_repo_storage: "/tmp/repos"
-  openapi_spec: "api/api.yaml" # Путь к файлу API, который вы прислали
+  openapi_spec: "api/api.yaml"
 
 parser:
-  default_exclude: [".git", "__pycache__", "*.lock", "*.png", "*.jpg", "node_modules"]
+  # NOTE: exclude patterns are matched against both filename and relative path.
+  # Keep this list conservative; you can override/extend it per IndexConfig.exclude_patterns.
+  default_exclude:
+    - ".git"
+    - "__pycache__"
+    - "*.lock"
+    - "*.png"
+    - "*.jpg"
+    - "node_modules"
+    # Common ignore/config noise (often hurts retrieval quality)
+    - ".gitignore"
+    - ".ignore"
+    - "*.ignore"
+    - ".dockerignore"
+    - ".gitattributes"
   extension_map:
     .py: "python"
     .js: "javascript"
@@ -49,3 +65,14 @@ reranker:
 
 qa:
   fallback_message: "Стандартная заглушка при выключенном модуле QA LLM."
+
+# Конфигурация LLM
+llm:
+  provider: "openrouter"
+  base_url: "https://openrouter.ai/api/v1"
+  api_key: "${oc.env:OPENROUTER_API_KEY, ''}"
+  model_name: "openai/gpt-oss-120b"
+  parameters:
+    temperature: 0.3
+    top_p: 0.95
+    max_tokens: 1024
