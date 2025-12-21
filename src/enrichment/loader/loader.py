@@ -67,7 +67,7 @@ class LoaderConnecter:
             self.logger.error(f"Failed to clone repository: {e} for request_id={request.meta.request_id}.")
             return IndexJobResponse(
                 meta=MetaResponse(
-                    request_id=request_id,
+                    request_id=request.meta.request_id,
                     start_datetime=datetime.now(), # будет перезаписано
                     end_datetime=datetime.now(), # будет перезаписано
                     status="error"
