@@ -77,7 +77,7 @@ class LoaderConnecter:
                     status="failed",
                     chunks_processed=0,
                     repo_path=temp_dir,
-                    description_error=e
+                    description_error=str(e)
                 )
             )
 
