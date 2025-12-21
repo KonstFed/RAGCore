@@ -1,8 +1,7 @@
-import os
 from datetime import datetime
 from omegaconf import DictConfig
 from src.core.service import BaseService
-from src.core.schemas import QueryRequest, QueryResponse, Chunk, SearchConfig
+from src.core.schemas import QueryRequest, QueryResponse, SearchConfig
 from src.search.preprocessor import Preprocessor
 from src.search.postprocessor import Postprocessor
 from src.search.rewriter import QueryRewriter
@@ -16,6 +15,7 @@ class SearchEngine(BaseService):
     Класс отвечает за поиск и генерацию ответа (`/query`).
     Пайплайн: Preprocess -> QueryRewrite -> Retrieve -> Rerank -> ContextExpansion -> QA (LLM) -> Postprocess.
     """
+
     def __init__(self, config_path: str = "configs/deployment_config.yaml"):
         super().__init__(config_path)
 
@@ -46,7 +46,9 @@ class SearchEngine(BaseService):
     def _init_postprocessor(self, config: DictConfig) -> Postprocessor:
         return Postprocessor(config)
 
-    async def predict(self, request: QueryRequest, config: SearchConfig) -> QueryResponse:
+    async def predict(
+        self, request: QueryRequest, config: SearchConfig
+    ) -> QueryResponse:
         """
         Пайплайн обработки пользовательского запроса.
         """
@@ -74,14 +76,11 @@ class SearchEngine(BaseService):
 
             return self._finalize_response(response, request, start_datetime)
 
-        except Exception as e:
+        except Exception:
             self.logger.exception(f"Critical error in job {request.meta.request_id}")
 
     def _finalize_response(
-        self,
-        response: QueryResponse,
-        request: QueryRequest,
-        start_time: datetime
+        self, response: QueryResponse, request: QueryRequest, start_time: datetime
     ) -> QueryResponse:
         """
         Вспомогательный метод для обновления метаданных перед возвратом ответа.
@@ -92,7 +91,9 @@ class SearchEngine(BaseService):
         response.meta.request_id = request.meta.request_id
         response.meta.start_datetime = start_time
         response.meta.end_datetime = end_time
-        response.meta.status = "done" if not response.meta.status else response.meta.status
+        response.meta.status = (
+            "done" if not response.meta.status else response.meta.status
+        )
 
         self.logger.info(
             f"Job {request.meta.request_id} completed. "
