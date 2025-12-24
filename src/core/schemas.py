@@ -161,11 +161,18 @@ class LLMGenerationParams(BaseModel):
 class LLMConfig(BaseModel):
     """Конфигурация LLM."""
     provider: Literal[
-        "openai", "azure", "mistral", "anthropic", "google", "ollama", "vllm", "custom"
-    ] = Field("openai", description="Провайдер API или тип бэкенда.")
+        "openai", "azure", "mistral", "anthropic", "google", "ollama", "vllm", "custom", "openrouter"
+    ] = Field("openrouter", description="Провайдер API")
     model_name: Literal[
-        "GigaChat-2-Max", "Qwen3-4B-Instruct-2507", "mistral-large-latest"
-    ] = Field("Qwen3-4B-Instruct-2507", description="Название модели.")
+        "GigaChat-2-Max",
+        "Qwen3-4B-Instruct-2507",
+        "mistral-large-latest",
+        "openai/gpt-oss-120b",
+        "openrouter/anthropic/claude-3.5-sonnet"
+    ] = Field(
+        "openai/gpt-oss-120b",
+        description="Название модели (или deployment name для выбранного провайдера)."
+    )
     base_url: Optional[HttpUrl] = Field(
         None,
         description="Базовый URL API. Обязателен для Ollama, vLLM или прокси.",
