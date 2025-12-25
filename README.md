@@ -5,6 +5,68 @@
 
 **RAG4Code** — это OpenSource фреймворк, предназначенный для семантического поиска и ответов на вопросы по кодовой базе GitHub-репозиториев. Решение объединяет классический RAG, агентный подход и гибкую настройку пайплайнов поиска.
 
+# Быстрый старт
+
+## Установка и запуск
+
+Прежде всего необходимо склонировать репозиторий:
+```bash
+git clone https://github.com/KonstFed/RAGCore.git
+```
+
+Также необходимо установить Docker на систему.
+
+Дальше вы можете использовать готовый Docker-Compose файл, либо установить все зависимости вручную.
+
+### Docker (рекомендуемый способ)
+
+Положить в файл docker/.env свой API ключ Openrouter/Jina (в текущей версии используется Openrouter), пример можно посмотреть в docker/.env_example
+
+Установка зависимостей:
+
+```bash
+bash docker/build.sh
+```
+
+Запуск приложения:
+
+```bash
+bash docker/run.sh
+```
+
+### Вручную
+
+Положить в файл .env свой API ключ Openrouter/Jina (в текущей версии используется Openrouter), пример можно посмотреть в docker/.env_example
+
+Установка [uv](https://github.com/astral-sh/uv):
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Установка зависимостей:
+
+```bash
+uv sync
+```
+
+Затем необходимо загрузить образ базы данных Qdrant:
+
+```bash
+docker pull qdrant/qdrant
+```
+
+Затем нужно в отдельном терменале запустить сервер с Qdrant:
+
+```bash
+docker run -p 6333:6333 -p 6334:6334 -v qdrant_storage:/qdrant/storage qdrant/qdrant
+```
+
+И затем запустить приложение:
+
+```bash
+streamlit run app.py
+```
 
 ## 1. Данные
 
