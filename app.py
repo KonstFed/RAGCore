@@ -43,11 +43,6 @@ with tab_index:
                 "chunk_size": 500,
                 "chunk_overlap": 50,
             },
-            "embedding_config": {
-                "model_name": "qwen3-embedding-0.6b",
-                "dimensions": 1024,
-                "max_tokens": 8192
-            },
             "exclude_patterns": ["*.lock", "__pycache__", ".venv", "build"]
         }
 

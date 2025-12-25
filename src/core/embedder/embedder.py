@@ -4,7 +4,7 @@ import requests
 import json
 from src.core.schemas import Chunk
 from typing import List, Dict, Any, Tuple
-from src.core.schemas import Chunk, IndexRequest, IndexConfig, IndexJobResponse
+from src.core.schemas import Chunk, IndexJobResponse
 from src.utils.logger import get_logger
 
 
@@ -24,7 +24,6 @@ class EmbeddingModel:
     async def vectorize(
         self,
         chunks: List[Chunk],
-        config: IndexConfig,
         index_response: IndexJobResponse
     ) -> Tuple[IndexJobResponse, List[Dict[str, Any]]]:
         """

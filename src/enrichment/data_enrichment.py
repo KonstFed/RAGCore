@@ -49,7 +49,7 @@ class DataEnrichment(BaseService):
 
             index_response, chunks = self.parser.pipeline(config, index_response)
 
-            index_response, vectors = await self.vectorizer.vectorize(chunks, config, index_response)
+            index_response, vectors = await self.vectorizer.vectorize(chunks, index_response)
             if index_response.meta.status == "error":
                 self._finalize_response(index_response, start_time)
 
