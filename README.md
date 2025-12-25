@@ -34,6 +34,12 @@ bash docker/build.sh
 bash docker/run.sh
 ```
 
+В конце нужно открыть приложение в браузере по ссылке:
+
+```
+http://0.0.0.0:8501
+```
+
 ### Вручную
 
 Положить в файл .env свой API ключ Openrouter/Jina (в текущей версии используется Openrouter), пример можно посмотреть в docker/.env_example
@@ -67,6 +73,16 @@ docker run -p 6333:6333 -p 6334:6334 -v qdrant_storage:/qdrant/storage qdrant/qd
 ```bash
 streamlit run app.py
 ```
+
+В конце нужно открыть приложение в браузере по ссылке:
+
+```
+http://0.0.0.0:8501
+```
+
+## Пример использования
+
+![](assets/gif/rag_core_demo.gif)
 
 ## 1. Данные
 
