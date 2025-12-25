@@ -1,0 +1,22 @@
+services:
+  qdrant:
+    image: qdrant/qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+  app:
+    image: ragcore-app
+    ports:
+      - "8501:8501"
+    environment:
+      QDRANT_URL: "http://qdrant:6333"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
+      JINA_API_KEY: "${JINA_API_KEY}"
+    depends_on:
+      - qdrant
+
+volumes:
+  qdrant_storage:

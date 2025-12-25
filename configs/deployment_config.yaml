@@ -3,7 +3,7 @@ server:
   port: 8000
 
 database:
-  url: "http://localhost:6333"
+  url: "${oc.env:QDRANT_URL, 'http://localhost:6333'}"
   collection_name: "github_code_chunks"
   top_k: 3
 
