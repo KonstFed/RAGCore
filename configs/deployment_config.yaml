@@ -8,11 +8,11 @@ database:
   top_k: 3
 
 embeddings:
-  default_provider: "jina"
-  url: "https://api.jina.ai/v1/embeddings"
-  api_key: "${oc.env:JINA_API_KEY, 'sk-placeholder'}"
-  model_name: "jina-code-embeddings-1.5b"
-  dimension: 1536 # если jina - 1536, если sentence-transformers - 768
+  default_provider: "openrouter"
+  url: "https://openrouter.ai/api/v1/embeddings"
+  api_key: "${oc.env:OPENROUTER_API_KEY, ''}"
+  model_name: "baai/bge-base-en-v1.5"
+  dimension: 768
   distance: "Cosine"
   batch_size: 30
   # Локальная CPU-модель для fallback (Sentence-Transformers)

@@ -14,6 +14,7 @@ class EmbeddingModel:
     """
     def __init__(self, cfg: DictConfig) -> None:
         self.logger = get_logger(self.__class__.__name__)
+        self.provider = getattr(cfg.embeddings, "default_provider", "jina")
         self.url = cfg.embeddings.url
         self.api_key = cfg.embeddings.api_key
         self.model_name = cfg.embeddings.model_name
@@ -79,13 +80,18 @@ class EmbeddingModel:
         for i in range(0, len(texts), self.batch_size):
             batch_texts = texts[i : i + self.batch_size]
 
-            data = {
-                "model": self.model_name,
-                "task": "nl2code.passage",
-                "truncate": True,
-                "input": batch_texts
-            }
-
+            if self.provider == "openrouter":
+                data = {
+                    "model": self.model_name,
+                    "input": batch_texts,
+                }
+            else:
+                data = {
+                    "model": self.model_name,
+                    "task": "nl2code.passage",
+                    "truncate": True,
+                    "input": batch_texts[9:11]
+                }
             try:
                 response = requests.post(self.url, headers=headers, data=json.dumps(data))
                 response.raise_for_status()
@@ -109,15 +115,23 @@ class EmbeddingModel:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
         }
-        data = {
-            "model": self.model_name,
-            "task": "nl2code.query",
-            "truncate": True,
-            "input": texts
-        }
+        if self.provider == "openrouter":
+            data = {
+                "model": self.model_name,
+                "input": texts,
+            }
+        else:
+            data = {
+                "model": self.model_name,
+                "task": "nl2code.query",
+                "truncate": True,
+                "input": texts
+            }
         response = requests.post(self.url, headers=headers, data=json.dumps(data))
         if response.status_code != 200:
             self.logger.error(f"Failed to get embedding for query: status={response.status_code}, response={response.text}")
+            return [[]]
+        self.logger.info(f"Successfuly embedded user question")
         return [r.get('embedding') for r in response.json()['data']]
 
     def _save_chunks_locally(self, chunks: List[Dict[str, Any]], request_id: str) -> None:
