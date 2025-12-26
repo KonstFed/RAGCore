@@ -108,10 +108,7 @@ def _render_sources(sources: list[dict], show_sources: bool) -> str:
     return sources_md
 
 
-# -------------------- history helpers --------------------
-
 def _content_to_text(content) -> str:
-    # In case gradio returns rich blocks: [{'type':'text','text':...}]
     if content is None:
         return ""
     if isinstance(content, str):
@@ -149,14 +146,12 @@ def _last_pairs(history: list[dict], pairs: int = 3) -> list[dict]:
     return history if len(history) <= max_msgs else history[-max_msgs:]
 
 
-# -------------------- CHANGED: chat now takes/returns chatbot_history (ALL history display) --------------------
-
 async def chat(
     repo_url: str,
     message: str,
     show_sources: bool,
-    history_state: list[dict],   # backend context (truncated)
-    chatbot_history: list[dict], # UI history (ALL)
+    history_state: list[dict],
+    chatbot_history: list[dict],s
 ):
     history_state = _normalize_history(history_state)
     chatbot_history = _normalize_history(chatbot_history)
@@ -189,17 +184,14 @@ async def chat(
     sources = _collect_sources(response)
     sources_md = _render_sources(sources, show_sources)
 
-    # UI: append to ALL history (messages format)
     chatbot_history = chatbot_history + [
         {"role": "user", "content": message},
         {"role": "assistant", "content": final_answer},
     ]
 
-    # Backend: append and truncate to last 3 pairs
     new_history_state = request_messages + [{"role": "assistant", "content": final_answer}]
     new_history_state = _last_pairs(new_history_state, pairs=3)
 
-    # IMPORTANT: return EXACTLY 5 values (matches 5 output components)
     return sources_md, sources, new_history_state, chatbot_history
 
 
@@ -220,7 +212,6 @@ with gr.Blocks(title="RAGCode") as demo:
         with gr.Tab("Чат по коду"):
             chat_repo_url = gr.Textbox(label="URL репозитория")
 
-            # NEW: show ALL history
             chatbot = gr.Chatbot(label="История", height=420)
 
             sources = gr.Markdown("Источники:\n- не найдено\n")
@@ -228,7 +219,7 @@ with gr.Blocks(title="RAGCode") as demo:
             show_sources = gr.Checkbox(label="Показывать содержимое источников", value=False)
 
             sources_state = gr.State([])
-            history_state = gr.State([])  # backend window only
+            history_state = gr.State([])
 
             send_button = gr.Button("Спросить")
 
