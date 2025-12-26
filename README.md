@@ -40,6 +40,11 @@ bash docker/run.sh
 http://0.0.0.0:8501
 ```
 
+Чтобы остановить приложение:
+```
+bash docker/stop.sh
+```
+
 #### 0.1.2 Вручную
 
 Положить в файл .env свой API ключ Openrouter/Jina (в текущей версии используется Openrouter), пример можно посмотреть в docker/.env_example
@@ -78,6 +83,11 @@ streamlit run app.py
 
 ```
 http://0.0.0.0:8501
+```
+
+Чтобы остановить приложение нужно остановить нажать CTLR + C и остановить контейнер с Qdrant:
+```
+docker stop <qdrant_container_id> (id можно посмотреть с помощью команды docker ps)
 ```
 
 ### 0.2 Пример использования
