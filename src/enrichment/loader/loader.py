@@ -2,7 +2,10 @@ import os
 import re
 import shutil
 import tempfile
+import tarfile
+import io
 import git
+import requests
 from datetime import datetime
 from omegaconf import DictConfig
 from src.core.db import VectorDBClient
@@ -28,14 +31,16 @@ class LoaderConnecter:
         self.vector_db_client = VectorDBClient(cfg)
         self.createdir(self.download_path)
 
-    def _parse_github_url(self, url: str) -> Tuple[str, Optional[str]]:
+    def _parse_github_url(self, url: str) -> Tuple[str, str, str, Optional[str]]:
         """
-        Парсит GitHub URL и извлекает базовый URL репозитория и branch/commit.
+        Парсит GitHub URL и извлекает owner, repo, base_url и branch/commit.
         
         Args:
             url: GitHub URL, может содержать /tree/branch или /tree/commit-hash
             
         Returns:
+            - owner: владелец репозитория
+            - repo: название репозитория
             - base_url: базовый URL репозитория без /tree/...
             - branch_or_commit: извлеченный branch или commit hash, или None
         """
@@ -44,13 +49,13 @@ class LoaderConnecter:
         match = re.match(pattern, url)
         
         if not match:
-            # Если не соответствует паттерну, возвращаем как есть
-            return url, None
+            # Если не соответствует паттерну, возвращаем как есть (для не-GitHub URLs)
+            return "", "", url, None
         
         owner, repo, tree_ref = match.groups()
         base_url = f"https://github.com/{owner}/{repo}"
         
-        return base_url, tree_ref
+        return owner, repo, base_url, tree_ref
 
     async def clone_repository(self, request: IndexRequest) -> IndexJobResponse:
         """
@@ -60,16 +65,15 @@ class LoaderConnecter:
         - https://github.com/owner/repo/tree/branch
         - https://github.com/owner/repo/tree/commit-hash
         
-        Сначала пытается клонировать как branch, если не получается - как commit hash.
+        Сначала пытается клонировать как branch. Если branch не существует,
+        предполагает что это commit hash и использует GitHub Archive API (без истории).
         
         Возвращает путь к склонированной папке.
         """
         repo_url = str(request.repo_url)
 
-        # Парсим URL для извлечения branch/commit из пути
-        base_url, url_ref = self._parse_github_url(repo_url)
-        
-        # Определяем, какой ref использовать: из URL или default (None)
+        # Парсим URL для извлечения owner, repo, base_url и branch/commit из пути
+        owner, repo, base_url, url_ref = self._parse_github_url(repo_url)
 
         temp_dir = tempfile.mkdtemp(prefix=f"repo_{request.meta.request_id}_", dir=self.download_path)
 
@@ -80,8 +84,10 @@ class LoaderConnecter:
 
         try:
             if url_ref:
-                # Сначала пытаемся клонировать как branch (shallow clone)
+                # Всегда сначала пытаемся клонировать как branch
+                # Это гарантирует, что мы не перепутаем branch name с commit hash
                 try:
+                    self.logger.info(f"Attempting to clone '{url_ref}' as branch...")
                     git.Repo.clone_from(
                         url=base_url,
                         to_path=temp_dir,
@@ -90,20 +96,13 @@ class LoaderConnecter:
                     )
                     self.logger.info(f"Successfully cloned {base_url} as branch '{url_ref}'")
                 except git.exc.GitCommandError:
-                    # Если не получилось как branch, пробуем как commit hash
-                    self.logger.info(f"Branch '{url_ref}' not found, trying as commit hash...")
-                    # Удаляем временную директорию перед повторной попыткой
+                    # Если не получилось как branch, значит это commit hash
+                    # Используем GitHub Archive API (без истории)
+                    self.logger.info(f"Branch '{url_ref}' does not exist, assuming it's a commit hash. Using GitHub Archive API...")
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     temp_dir = tempfile.mkdtemp(prefix=f"repo_{request.meta.request_id}_", dir=self.download_path)
-                    
-                    # Клонируем весь репозиторий, затем checkout на commit
-                    repo = git.Repo.clone_from(
-                        url=base_url,
-                        to_path=temp_dir,
-                        depth=None  # Полная история нужна для checkout по commit
-                    )
-                    repo.git.checkout(url_ref)
-                    self.logger.info(f"Successfully cloned {base_url} and checked out commit '{url_ref}'")
+                    self._download_github_archive(owner, repo, url_ref, temp_dir)
+                    self.logger.info(f"Successfully downloaded {base_url} at commit '{url_ref}' via archive API")
             else:
                 # Клонируем default branch без указания branch
                 git.Repo.clone_from(
@@ -145,6 +144,52 @@ class LoaderConnecter:
                     description_error=str(e)
                 )
             )
+
+    def _download_github_archive(self, owner: str, repo: str, commit_hash: str, target_dir: str) -> None:
+        """
+        Скачивает архив репозитория с GitHub для конкретного commit и распаковывает его.
+        
+        Args:
+            owner: Владелец репозитория
+            repo: Название репозитория
+            commit_hash: Commit hash для скачивания
+            target_dir: Директория для распаковки архива
+        """
+        # GitHub Archive API URL
+        archive_url = f"https://github.com/{owner}/{repo}/archive/{commit_hash}.tar.gz"
+        
+        self.logger.info(f"Downloading archive from {archive_url}...")
+        
+        # Скачиваем архив
+        response = requests.get(archive_url, timeout=300, stream=True)
+        response.raise_for_status()
+        
+        # Распаковываем архив
+        self.logger.info(f"Extracting archive to {target_dir}...")
+        with tarfile.open(fileobj=io.BytesIO(response.content)) as tar:
+            tar.extractall(path=target_dir)
+        
+        # GitHub создает папку вида repo-{short_hash}, находим её
+        extracted_dirs = [
+            d for d in os.listdir(target_dir) 
+            if os.path.isdir(os.path.join(target_dir, d))
+        ]
+        
+        if not extracted_dirs:
+            raise ValueError("No directories found in extracted archive")
+        
+        # Перемещаем содержимое из вложенной папки на уровень выше
+        actual_repo_path = os.path.join(target_dir, extracted_dirs[0])
+        for item in os.listdir(actual_repo_path):
+            shutil.move(
+                os.path.join(actual_repo_path, item),
+                os.path.join(target_dir, item)
+            )
+        
+        # Удаляем пустую вложенную папку
+        os.rmdir(actual_repo_path)
+        
+        self.logger.info(f"Archive extracted successfully to {target_dir}")
 
     async def save_vectors(
         self,
