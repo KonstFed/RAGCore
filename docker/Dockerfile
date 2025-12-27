@@ -15,12 +15,13 @@ RUN pip install uv
 
 COPY pyproject.toml ./
 COPY uv.lock ./
+
+RUN uv pip install --system .
+
 COPY src ./src
 COPY app.py ./
 COPY configs ./configs
 
-RUN uv pip install --system .
-
 EXPOSE 8501
 
-CMD ["python", "-m", "streamlit", "run", "app.py", "--server.address=0.0.0.0"]
+CMD ["python", "app.py"]
