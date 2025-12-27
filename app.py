@@ -28,7 +28,6 @@ with tab_index:
                 "request_id": str(uuid4())
             },
             "repo_url": repo_url,
-            "branch": "main"
         }
 
         config = { # IndexConfig

@@ -1,7 +1,7 @@
 import os
+import re
 import shutil
 import tempfile
-import uuid
 import git
 from datetime import datetime
 from omegaconf import DictConfig
@@ -12,7 +12,7 @@ from src.core.schemas import (
     IndexJobStatus,
     MetaResponse
 )
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple, Optional
 from src.utils.logger import get_logger
 
 
@@ -28,26 +28,91 @@ class LoaderConnecter:
         self.vector_db_client = VectorDBClient(cfg)
         self.createdir(self.download_path)
 
+    def _parse_github_url(self, url: str) -> Tuple[str, Optional[str]]:
+        """
+        Парсит GitHub URL и извлекает базовый URL репозитория и branch/commit.
+        
+        Args:
+            url: GitHub URL, может содержать /tree/branch или /tree/commit-hash
+            
+        Returns:
+            - base_url: базовый URL репозитория без /tree/...
+            - branch_or_commit: извлеченный branch или commit hash, или None
+        """
+        # Паттерн для URL вида: https://github.com/owner/repo/tree/branch-or-commit
+        pattern = r'^https://github\.com/([^/]+)/([^/]+)(?:/tree/([^/]+))?/?$'
+        match = re.match(pattern, url)
+        
+        if not match:
+            # Если не соответствует паттерну, возвращаем как есть
+            return url, None
+        
+        owner, repo, tree_ref = match.groups()
+        base_url = f"https://github.com/{owner}/{repo}"
+        
+        return base_url, tree_ref
+
     async def clone_repository(self, request: IndexRequest) -> IndexJobResponse:
         """
         Клонирует репозиторий во временную директорию.
+        Поддерживает URL вида:
+        - https://github.com/owner/repo
+        - https://github.com/owner/repo/tree/branch
+        - https://github.com/owner/repo/tree/commit-hash
+        
+        Сначала пытается клонировать как branch, если не получается - как commit hash.
+        
         Возвращает путь к склонированной папке.
         """
         repo_url = str(request.repo_url)
-        branch = request.branch
+
+        # Парсим URL для извлечения branch/commit из пути
+        base_url, url_ref = self._parse_github_url(repo_url)
+        
+        # Определяем, какой ref использовать: из URL или default (None)
 
         temp_dir = tempfile.mkdtemp(prefix=f"repo_{request.meta.request_id}_", dir=self.download_path)
 
-        self.logger.info(f"Cloning {repo_url} (branch: {branch}) to {temp_dir} for request_id={request.meta.request_id}.")
+        if url_ref:
+            self.logger.info(f"Cloning {base_url} (ref: {url_ref}) to {temp_dir} for request_id={request.meta.request_id}.")
+        else:
+            self.logger.info(f"Cloning {base_url} (default branch) to {temp_dir} for request_id={request.meta.request_id}.")
 
         try:
-            git.Repo.clone_from(
-                url=repo_url,
-                to_path=temp_dir,
-                branch=branch,
-                depth=1
-            )
-            self.logger.info(f"Successful cloning {repo_url} (branch: {branch}) to {temp_dir}")
+            if url_ref:
+                # Сначала пытаемся клонировать как branch (shallow clone)
+                try:
+                    git.Repo.clone_from(
+                        url=base_url,
+                        to_path=temp_dir,
+                        branch=url_ref,
+                        depth=1
+                    )
+                    self.logger.info(f"Successfully cloned {base_url} as branch '{url_ref}'")
+                except git.exc.GitCommandError:
+                    # Если не получилось как branch, пробуем как commit hash
+                    self.logger.info(f"Branch '{url_ref}' not found, trying as commit hash...")
+                    # Удаляем временную директорию перед повторной попыткой
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    temp_dir = tempfile.mkdtemp(prefix=f"repo_{request.meta.request_id}_", dir=self.download_path)
+                    
+                    # Клонируем весь репозиторий, затем checkout на commit
+                    repo = git.Repo.clone_from(
+                        url=base_url,
+                        to_path=temp_dir,
+                        depth=None  # Полная история нужна для checkout по commit
+                    )
+                    repo.git.checkout(url_ref)
+                    self.logger.info(f"Successfully cloned {base_url} and checked out commit '{url_ref}'")
+            else:
+                # Клонируем default branch без указания branch
+                git.Repo.clone_from(
+                    url=base_url,
+                    to_path=temp_dir,
+                    depth=1
+                )
+                self.logger.info(f"Successfully cloned {base_url} (default branch)")
+            
             return IndexJobResponse(
                 meta=MetaResponse(
                     request_id=request.meta.request_id,
