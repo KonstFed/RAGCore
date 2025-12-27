@@ -28,6 +28,7 @@ class LoaderConnecter:
         self.logger = get_logger(self.__class__.__name__)
         self.download_path = cfg.paths.temp_repo_storage
         self.collection_name = cfg.database.collection_name
+        self.batch_size = cfg.database.get("batch_size", 500)
         self.vector_db_client = VectorDBClient(cfg)
         self.createdir(self.download_path)
 
@@ -234,18 +235,31 @@ class LoaderConnecter:
                     f"for request_id={index_job_response.meta.request_id}."
                 )
 
-            upsert_response = self.vector_db_client.add_vectors(collection_name, vectors)
+            # Batch vectors for efficient upload
+            total_batches = (len(vectors) + self.batch_size - 1) // self.batch_size
+            
+            for batch_idx in range(0, len(vectors), self.batch_size):
+                batch_end = min(batch_idx + self.batch_size, len(vectors))
+                batch = vectors[batch_idx:batch_end]
+                batch_num = (batch_idx // self.batch_size) + 1
+                
+                self.logger.debug(
+                    f"Uploading batch {batch_num}/{total_batches} "
+                    f"({len(batch)} vectors) for request_id={index_job_response.meta.request_id}."
+                )
+                
+                upsert_response = self.vector_db_client.add_vectors(collection_name, batch)
+                
+                if upsert_response.get("status") != "ok":
+                    return self._error_response(
+                        index_job_response,
+                        f"Database returned non-ok status for batch {batch_num}/{total_batches}: {upsert_response}"
+                    )
 
-            if upsert_response.get("status") == "ok":
-                return self._success_response(
-                    index_job_response,
-                    f"Successfully saved {len(vectors)} vectors"
-                )
-            else:
-                return self._error_response(
-                    index_job_response,
-                    f"Database returned non-ok status: {upsert_response}"
-                )
+            return self._success_response(
+                index_job_response,
+                f"Successfully saved {len(vectors)} vectors in {total_batches} batches"
+            )
 
         except Exception as e:
             return self._error_response(index_job_response, f"Error while saving vectors to QDrant: {e}")
