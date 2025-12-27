@@ -6,6 +6,7 @@ database:
   url: "${oc.env:QDRANT_URL, 'http://localhost:6333'}"
   collection_name: "github_code_chunks"
   top_k: 3
+  batch_size: 50
 
 embeddings:
   default_provider: "openrouter"
@@ -14,7 +15,7 @@ embeddings:
   model_name: "qwen/qwen3-embedding-8b" # "baai/bge-base-en-v1.5"
   dimension: 4096 # 768
   distance: "Cosine"
-  batch_size: 30
+  batch_size: 100
   # Локальная CPU-модель для fallback (Sentence-Transformers)
   local_model: "flax-sentence-embeddings/st-codesearch-distilroberta-base"
 

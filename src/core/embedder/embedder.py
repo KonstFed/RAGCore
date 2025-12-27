@@ -76,7 +76,9 @@ class EmbeddingModel:
             "Authorization": f"Bearer {self.api_key}"
         }
 
-        for i in range(0, len(texts), self.batch_size):
+        for batch_num, i in enumerate(range(0, len(texts), self.batch_size)):
+            total_batches = (len(texts) + self.batch_size - 1) // self.batch_size
+            self.logger.debug(f"Processing batch {batch_num+1}/{total_batches} with batch_size {self.batch_size}.")
             batch_texts = texts[i : i + self.batch_size]
 
             if self.provider == "openrouter":
