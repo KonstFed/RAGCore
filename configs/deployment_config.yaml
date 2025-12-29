@@ -33,6 +33,7 @@ parser:
     - "*.lock"
     - "*.png"
     - "*.jpg"
+    - "*.ipynb"
     - "node_modules"
     # Common ignore/config noise (often hurts retrieval quality)
     - ".gitignore"
