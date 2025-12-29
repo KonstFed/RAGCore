@@ -53,7 +53,7 @@ def _build_search_config() -> dict:
         "query_rewriter": {"enabled": False},
         "retriever": {"enabled": True},
         "filtering": {"enabled": True},
-        "reranker": {"enabled": True},
+        "reranker": {"enabled": False},
         "context_expansion": {"enabled": True},
         "qa": {"enabled": True},
         "query_postprocessor": {

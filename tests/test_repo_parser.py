@@ -18,7 +18,6 @@ def index_request() -> IndexRequest:
     return IndexRequest(
         meta=MetaRequest(request_id=str(uuid.uuid4())),
         repo_url="https://github.com/yilinjz/astchunk", # placeholder
-        branch="main",
     )
 
 @pytest.fixture

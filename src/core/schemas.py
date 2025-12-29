@@ -88,7 +88,6 @@ class IndexConfig(BaseModel):
 class IndexRequest(BaseModel):
     repo_url: HttpUrl = Field(..., example="https://github.com/owner/repo")
     meta: MetaRequest
-    branch: str = Field("main")
     config: Optional[IndexConfig] = None
 
 
