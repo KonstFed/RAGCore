@@ -293,3 +293,58 @@ class LoaderConnecter:
         index_job_response.meta.status = "done"
         index_job_response.job_status.status = "saved_to_qdrant"
         return index_job_response
+
+    def is_repo_indexed(self, repo_url: str) -> bool:
+        """
+        Проверяет, проиндексирован ли репозиторий в векторной базе данных.
+        
+        Args:
+            repo_url: URL репозитория в формате f"{base_url}/commit/{commit_hash}"
+            
+        Returns:
+            True если репозиторий уже проиндексирован, False в противном случае
+        """
+        try:
+            # Проверяем существование коллекции
+            collections_response = self.vector_db_client.get_collections()
+            existing_collections = []
+            if "result" in collections_response and "collections" in collections_response["result"]:
+                existing_collections = [
+                    col["name"] for col in collections_response["result"]["collections"]
+                ]
+            
+            if self.collection_name not in existing_collections:
+                self.logger.debug(f"Collection '{self.collection_name}' does not exist. Repo is not indexed.")
+                return False
+            
+            # Используем scroll для поиска точек с указанным repo_url
+            scroll_filter = {
+                "must": [
+                    {
+                        "key": "repo_url",
+                        "match": {
+                            "value": str(repo_url)
+                        }
+                    }
+                ]
+            }
+            
+            scroll_response = self.vector_db_client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=scroll_filter,
+                limit=1,
+                with_payload=False
+            )
+            
+            # Проверяем, есть ли результаты
+            if "result" in scroll_response and "points" in scroll_response["result"]:
+                points = scroll_response["result"]["points"]
+                is_indexed = len(points) > 0
+                return is_indexed
+            else:
+                self.logger.warning(f"Unexpected response format from QDrant: {scroll_response}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error checking if repo is indexed: {e}")
+            return False
