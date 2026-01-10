@@ -46,7 +46,8 @@ class LoaderConnecter:
             - branch_or_commit: извлеченный branch или commit hash, или None
         """
         # Паттерн для URL вида: https://github.com/owner/repo/tree/branch-or-commit
-        pattern = r'^https://github\.com/([^/]+)/([^/]+)(?:/tree/([^/]+))?/?$'
+        # или https://github.com/owner/repo/commit/commit-hash
+        pattern = r'^https://github\.com/([^/]+)/([^/]+)(?:/(?:tree|commit)/([^/]+))?/?$'
         match = re.match(pattern, url)
         
         if not match:
@@ -83,18 +84,21 @@ class LoaderConnecter:
         else:
             self.logger.info(f"Cloning {base_url} (default branch) to {temp_dir} for request_id={request.meta.request_id}.")
 
+        commit_hash = None
         try:
             if url_ref:
                 # Всегда сначала пытаемся клонировать как branch
                 # Это гарантирует, что мы не перепутаем branch name с commit hash
                 try:
                     self.logger.info(f"Attempting to clone '{url_ref}' as branch...")
-                    git.Repo.clone_from(
+                    repo = git.Repo.clone_from(
                         url=base_url,
                         to_path=temp_dir,
                         branch=url_ref,
                         depth=1
                     )
+                    # Получаем commit hash HEAD-а
+                    commit_hash = repo.head.commit.hexsha
                     self.logger.info(f"Successfully cloned {base_url} as branch '{url_ref}'")
                 except git.exc.GitCommandError:
                     # Если не получилось как branch, значит это commit hash
@@ -103,16 +107,19 @@ class LoaderConnecter:
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     temp_dir = tempfile.mkdtemp(prefix=f"repo_{request.meta.request_id}_", dir=self.download_path)
                     self._download_github_archive(owner, repo, url_ref, temp_dir)
+                    commit_hash = url_ref
                     self.logger.info(f"Successfully downloaded {base_url} at commit '{url_ref}' via archive API")
             else:
                 # Клонируем default branch без указания branch
-                git.Repo.clone_from(
+                repo = git.Repo.clone_from(
                     url=base_url,
                     to_path=temp_dir,
                     depth=1
                 )
+                # Получаем commit hash HEAD-а (по умолчанию это HEAD после клонирования)
+                commit_hash = repo.head.commit.hexsha
                 self.logger.info(f"Successfully cloned {base_url} (default branch)")
-            
+
             return IndexJobResponse(
                 meta=MetaResponse(
                     request_id=request.meta.request_id,
@@ -120,7 +127,7 @@ class LoaderConnecter:
                     end_datetime=datetime.now(), # будет перезаписано
                     status="done"
                 ),
-                repo_url=request.repo_url,
+                repo_url=f"{base_url}/commit/{commit_hash}",
                 job_status=IndexJobStatus(
                     status="loaded",
                     chunks_processed=0,
