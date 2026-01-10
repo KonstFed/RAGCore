@@ -348,3 +348,74 @@ class LoaderConnecter:
         except Exception as e:
             self.logger.error(f"Error checking if repo is indexed: {e}")
             return False
+
+    def delete_repo_vectors(self, repo_url: str) -> bool:
+        """
+        Удаляет все векторы репозитория из векторной базы данных.
+        
+        Args:
+            repo_url: URL репозитория в формате f"{base_url}/commit/{commit_hash}"
+            
+        Returns:
+            True если удаление прошло успешно, False в противном случае
+        """
+        try:
+            # Convert HttpUrl to string if needed (Pydantic HttpUrl is not JSON serializable)
+            repo_url_str = str(repo_url)
+            
+            # Проверяем существование коллекции
+            collections_response = self.vector_db_client.get_collections()
+            existing_collections = []
+            if "result" in collections_response and "collections" in collections_response["result"]:
+                existing_collections = [
+                    col["name"] for col in collections_response["result"]["collections"]
+                ]
+            
+            if self.collection_name not in existing_collections:
+                self.logger.warning(f"Collection '{self.collection_name}' does not exist. Nothing to delete.")
+                return False
+            
+            # Сначала проверяем, есть ли что удалять
+            scroll_filter = {
+                "must": [
+                    {
+                        "key": "repo_url",
+                        "match": {
+                            "value": repo_url_str
+                        }
+                    }
+                ]
+            }
+            
+            scroll_response = self.vector_db_client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=scroll_filter,
+                limit=1,
+                with_payload=False
+            )
+            
+            if "result" in scroll_response and "points" in scroll_response["result"]:
+                points = scroll_response["result"]["points"]
+                if len(points) == 0:
+                    self.logger.info(f"No vectors found for repo {repo_url_str}. Nothing to delete.")
+                    return True
+            
+            # Удаляем все точки с указанным repo_url
+            self.logger.info(f"Deleting vectors for repo {repo_url_str}...")
+            delete_response = self.vector_db_client.delete_points(
+                collection_name=self.collection_name,
+                delete_filter=scroll_filter
+            )
+            
+            if delete_response.get("status") == "ok":
+                result = delete_response.get("result", {})
+                operation_id = result.get("operation_id")
+                self.logger.info(f"Successfully deleted vectors for repo {repo_url_str}. Operation ID: {operation_id}")
+                return True
+            else:
+                self.logger.error(f"Failed to delete vectors for repo {repo_url_str}: {delete_response}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error deleting repo vectors: {e}")
+            return False
