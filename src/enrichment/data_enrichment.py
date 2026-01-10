@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 from omegaconf import DictConfig
 from src.core.service import BaseService
-from src.core.schemas import IndexRequest, IndexConfig, IndexJobResponse, Chunk
+from src.core.schemas import IndexRequest, IndexConfig, IndexJobResponse, MetaResponse, IndexJobStatus
 from src.enrichment.loader import LoaderConnecter
 from src.enrichment.parser import RepoParser
 from src.core.embedder import EmbeddingModel
@@ -42,27 +42,25 @@ class DataEnrichment(BaseService):
         start_time = datetime.now()
         index_response = request
 
-        try:
-            index_response = await self.loader.clone_repository(request)
-            if index_response.meta.status == "error":
-                self._finalize_response(index_response, start_time)
-
-            index_response, chunks = self.parser.pipeline(config, index_response)
-
-            index_response, vectors = await self.vectorizer.vectorize(chunks, index_response)
-            if index_response.meta.status == "error":
-                self._finalize_response(index_response, start_time)
-
-            index_response = await self.loader.save_vectors(vectors, index_response)
-            if index_response.meta.status == "error":
-                self._finalize_response(index_response, start_time)
-
+        index_response = await self.loader.clone_repository(request)
+        if index_response.meta.status == "error":
             return self._finalize_response(index_response, start_time)
 
-        except Exception as e:
-            self.logger.exception(f"Critical error in job {request.meta.request_id}")
+        if self.loader.is_repo_indexed(index_response.repo_url):
+            self.logger.info(f"Repo {index_response.repo_url} already indexed. Skipping indexing.")
+            return self._finalize_response(index_response, start_time)
 
-        return IndexJobResponse(**response)
+        index_response, chunks = self.parser.pipeline(config, index_response)
+
+        index_response, vectors = await self.vectorizer.vectorize(chunks, index_response)
+        if index_response.meta.status == "error":
+            return self._finalize_response(index_response, start_time)
+
+        index_response = await self.loader.save_vectors(vectors, index_response)
+        if index_response.meta.status == "error":
+            return self._finalize_response(index_response, start_time)
+
+        return self._finalize_response(index_response, start_time)
 
     def _finalize_response(
         self,
