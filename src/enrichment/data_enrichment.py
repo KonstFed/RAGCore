@@ -48,6 +48,7 @@ class DataEnrichment(BaseService):
 
         if self.loader.is_repo_indexed(index_response.repo_url):
             self.logger.info(f"Repo {index_response.repo_url} already indexed. Skipping indexing.")
+            index_response.job_status.description_error = "Repository already indexed. Skipping indexing."
             return self._finalize_response(index_response, start_time)
 
         index_response, chunks = self.parser.pipeline(config, index_response)
