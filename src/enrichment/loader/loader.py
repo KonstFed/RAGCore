@@ -359,10 +359,8 @@ class LoaderConnecter:
         Returns:
             True если удаление прошло успешно, False в противном случае
         """
+        repo_url_str = str(repo_url)
         try:
-            # Convert HttpUrl to string if needed (Pydantic HttpUrl is not JSON serializable)
-            repo_url_str = str(repo_url)
-            
             # Проверяем существование коллекции
             collections_response = self.vector_db_client.get_collections()
             existing_collections = []
@@ -381,7 +379,7 @@ class LoaderConnecter:
                     {
                         "key": "repo_url",
                         "match": {
-                            "value": repo_url_str
+                            "value": repo_url_str,
                         }
                     }
                 ]
