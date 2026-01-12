@@ -2,11 +2,20 @@ import os
 from datetime import datetime
 from omegaconf import DictConfig
 from src.core.service import BaseService
-from src.core.schemas import IndexRequest, IndexConfig, IndexJobResponse, Chunk
+from src.core.schemas import (
+    IndexRequest, 
+    IndexConfig, 
+    IndexJobResponse, 
+    MetaResponse, 
+    IndexJobStatus,
+    DeleteResponse,
+    MetaRequest
+)
 from src.enrichment.loader import LoaderConnecter
 from src.enrichment.parser import RepoParser
 from src.core.embedder import EmbeddingModel
 from typing import Any, Dict, List, Tuple
+import uuid
 
 
 class DataEnrichment(BaseService):
@@ -42,27 +51,26 @@ class DataEnrichment(BaseService):
         start_time = datetime.now()
         index_response = request
 
-        try:
-            index_response = await self.loader.clone_repository(request)
-            if index_response.meta.status == "error":
-                self._finalize_response(index_response, start_time)
-
-            index_response, chunks = self.parser.pipeline(config, index_response)
-
-            index_response, vectors = await self.vectorizer.vectorize(chunks, index_response)
-            if index_response.meta.status == "error":
-                self._finalize_response(index_response, start_time)
-
-            index_response = await self.loader.save_vectors(vectors, index_response)
-            if index_response.meta.status == "error":
-                self._finalize_response(index_response, start_time)
-
+        index_response = await self.loader.clone_repository(request)
+        if index_response.meta.status == "error":
             return self._finalize_response(index_response, start_time)
 
-        except Exception as e:
-            self.logger.exception(f"Critical error in job {request.meta.request_id}")
+        if self.loader.is_repo_indexed(index_response.repo_url):
+            self.logger.info(f"Repo {index_response.repo_url} already indexed. Skipping indexing.")
+            index_response.job_status.description_error = "Repository already indexed. Skipping indexing."
+            return self._finalize_response(index_response, start_time)
 
-        return IndexJobResponse(**response)
+        index_response, chunks = self.parser.pipeline(config, index_response)
+
+        index_response, vectors = await self.vectorizer.vectorize(chunks, index_response)
+        if index_response.meta.status == "error":
+            return self._finalize_response(index_response, start_time)
+
+        index_response = await self.loader.save_vectors(vectors, index_response)
+        if index_response.meta.status == "error":
+            return self._finalize_response(index_response, start_time)
+
+        return self._finalize_response(index_response, start_time)
 
     def _finalize_response(
         self,
@@ -85,3 +93,66 @@ class DataEnrichment(BaseService):
             f"Duration: {(end_time - start_time).total_seconds():.2f}s"
         )
         return response
+
+    async def delete_repo_index(self, repo_url: str, request_id: uuid.UUID = None) -> DeleteResponse:
+        """
+        Удаляет индекс репозитория из векторной базы данных.
+        
+        Args:
+            repo_url: URL репозитория для удаления
+            request_id: Опциональный ID запроса (если не указан, будет сгенерирован)
+            
+        Returns:
+            DeleteResponse с результатом операции
+        """
+        if request_id is None:
+            request_id = uuid.uuid4()
+        
+        start_time = datetime.now()
+        self.logger.info(f"Starting deletion job: {request_id} for repo: {repo_url}")
+        
+        try:
+            success = self.loader.delete_repo_vectors(repo_url)
+            end_time = datetime.now()
+            
+            message = (
+                f"Successfully deleted vectors for repository {repo_url}"
+                if success
+                else f"Failed to delete vectors for repository {repo_url}"
+            )
+            
+            response = DeleteResponse(
+                repo_url=repo_url,
+                success=success,
+                meta=MetaResponse(
+                    request_id=request_id,
+                    start_datetime=start_time,
+                    end_datetime=end_time,
+                    status="done" if success else "error"
+                ),
+                message=message
+            )
+            
+            self.logger.info(
+                f"Deletion job {request_id} completed. "
+                f"Success: {success}. "
+                f"Duration: {(end_time - start_time).total_seconds():.2f}s"
+            )
+            
+            return response
+            
+        except Exception as e:
+            end_time = datetime.now()
+            self.logger.error(f"Error in deletion job {request_id}: {e}", exc_info=True)
+            
+            return DeleteResponse(
+                repo_url=repo_url,
+                success=False,
+                meta=MetaResponse(
+                    request_id=request_id,
+                    start_datetime=start_time,
+                    end_datetime=end_time,
+                    status="error"
+                ),
+                message=f"Error deleting repository index: {str(e)}"
+            )

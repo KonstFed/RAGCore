@@ -103,6 +103,32 @@ class VectorDBClient:
         response = requests.post(url, headers=headers, json=payload)
         return response.json()
 
+    def delete_points(
+        self,
+        collection_name: str,
+        delete_filter: Dict,
+    ) -> Dict[str, Any]:
+        """
+        Удаляет точки из коллекции по фильтру.
+        
+        Args:
+            collection_name: Название коллекции
+            delete_filter: Фильтр для выбора точек для удаления (в формате QDrant filter)
+            
+        Returns:
+            Ответ от QDrant API
+        """
+        url = f"{self.db_url}/collections/{collection_name}/points/delete"
+        
+        payload = {
+            "filter": delete_filter,
+        }
+        
+        params = {"wait": "true"}
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(url, params=params, headers=headers, json=payload)
+        return response.json()
+
     def _setup_collection_indexes(self, collection_name: str) -> None:
         """
         Создает индексы полей (Payload Indexes) в QDrant.

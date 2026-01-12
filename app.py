@@ -8,6 +8,13 @@ from src.assistant import Assistant
 assistant = Assistant(service_cfg_path="configs/deployment_config.yaml")
 
 
+def _build_delete_request(repo_url: str) -> dict:
+    return {
+        "meta": {"request_id": str(uuid4())},
+        "repo_url": repo_url,
+    }
+
+
 def _build_index_request(repo_url: str) -> tuple[dict, dict]:
     request = {
         "meta": {"request_id": str(uuid4())},
@@ -70,14 +77,101 @@ def _build_search_config() -> dict:
 
 async def index_repo(repo_url: str) -> str:
     if not repo_url:
-        return "Введите GitHub URL."
+        return "❌ **Ошибка:** Введите GitHub URL."
 
     request, config = _build_index_request(repo_url)
-    response = await assistant.index(request, config)
-    return (
-        f"Репозиторий с request_id={response.meta.request_id} "
-        f"в статусе '{response.job_status.status}'"
-    )
+    
+    try:
+        response = await assistant.index(request, config)
+        
+        # Calculate duration
+        duration = (response.meta.end_datetime - response.meta.start_datetime).total_seconds()
+        
+        # Build verbose response
+        result = []
+        result.append("## 📊 Результат индексации\n")
+        result.append(f"**Request ID:** `{response.meta.request_id}`\n")
+        result.append(f"**Repository URL:** {response.repo_url}\n")
+        result.append(f"**Время выполнения:** {duration:.2f} секунд\n")
+        result.append(f"**Статус:** {response.meta.status}\n")
+        
+        # Check if repo was already indexed
+        is_already_indexed = (response.job_status.description_error and 
+                             "already indexed" in response.job_status.description_error.lower())
+        
+        if is_already_indexed:
+            result.append("\n⚠️ **Репозиторий уже проиндексирован**\n")
+            result.append("Индексация была пропущена, так как репозиторий уже существует в базе данных.\n")
+        else:
+            # Show job status details
+            if response.job_status.status:
+                status_emoji = {
+                    "failed": "❌",
+                    "loaded": "📥",
+                    "parsed": "🔍",
+                    "vectorized": "🧮",
+                    "saved_to_qdrant": "✅"
+                }
+                emoji = status_emoji.get(response.job_status.status, "ℹ️")
+                result.append(f"\n**Статус задачи:** {emoji} {response.job_status.status}\n")
+            
+            # Show chunks processed
+            if response.job_status.chunks_processed is not None:
+                result.append(f"**Обработано чанков:** {response.job_status.chunks_processed}\n")
+            
+            # Show errors if any
+            if response.meta.status == "error":
+                result.append("\n### ❌ Ошибка при индексации\n")
+                if response.job_status.description_error:
+                    result.append(f"**Описание ошибки:**\n```\n{response.job_status.description_error}\n```\n")
+                else:
+                    result.append("Произошла ошибка во время индексации.\n")
+            elif response.job_status.status == "saved_to_qdrant":
+                result.append("\n### ✅ Индексация завершена успешно\n")
+                result.append("Репозиторий успешно проиндексирован и сохранен в векторную базу данных.\n")
+        
+        return "".join(result)
+        
+    except Exception as e:
+        return f"❌ **Критическая ошибка:** {type(e).__name__}: {str(e)}"
+
+
+async def delete_index(repo_url: str) -> str:
+    if not repo_url:
+        return "❌ **Ошибка:** Введите GitHub URL."
+
+    request = _build_delete_request(repo_url)
+
+    try:
+        response = await assistant.delete_index(request)
+        
+        # Calculate duration
+        duration = (response.meta.end_datetime - response.meta.start_datetime).total_seconds()
+        
+        # Build verbose response
+        result = []
+        result.append("## 🗑️ Результат удаления индекса\n")
+        result.append(f"**Request ID:** `{response.meta.request_id}`\n")
+        result.append(f"**Repository URL:** {response.repo_url}\n")
+        result.append(f"**Время выполнения:** {duration:.2f} секунд\n")
+        result.append(f"**Статус:** {response.meta.status}\n")
+        
+        if response.success:
+            result.append("\n### ✅ Удаление завершено успешно\n")
+            result.append("Индекс репозитория успешно удален из векторной базы данных.\n")
+            if response.message:
+                result.append(f"\n**Сообщение:** {response.message}\n")
+        else:
+            result.append("\n### ❌ Ошибка при удалении\n")
+            if response.message:
+                result.append(f"**Описание ошибки:**\n```\n{response.message}\n```\n")
+            else:
+                result.append("Произошла ошибка во время удаления индекса.\n")
+        
+        return "".join(result)
+        
+    except Exception as e:
+        return f"❌ **Критическая ошибка:** {type(e).__name__}: {str(e)}"
 
 
 def _collect_sources(response) -> list[dict]:
@@ -151,7 +245,7 @@ async def chat(
     message: str,
     show_sources: bool,
     history_state: list[dict],
-    chatbot_history: list[dict],s
+    chatbot_history: list[dict],
 ):
     history_state = _normalize_history(history_state)
     chatbot_history = _normalize_history(chatbot_history)
@@ -205,9 +299,12 @@ with gr.Blocks(title="RAGCode") as demo:
     with gr.Tabs():
         with gr.Tab("Индексировать репозиторий"):
             repo_url_input = gr.Textbox(label="GitHub URL")
-            index_button = gr.Button("Индексировать")
+            with gr.Row():
+                index_button = gr.Button("Индексировать", variant="primary")
+                delete_button = gr.Button("Удалить индекс", variant="stop")
             index_status = gr.Markdown()
             index_button.click(index_repo, inputs=repo_url_input, outputs=index_status)
+            delete_button.click(delete_index, inputs=repo_url_input, outputs=index_status)
 
         with gr.Tab("Чат по коду"):
             chat_repo_url = gr.Textbox(label="URL репозитория")

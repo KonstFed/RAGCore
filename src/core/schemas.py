@@ -72,6 +72,14 @@ class IndexJobResponse(BaseModel):
     job_status: IndexJobStatus
 
 
+class DeleteResponse(BaseModel):
+    """Ответ на запрос удаления индекса."""
+    repo_url: HttpUrl = Field(..., example="https://github.com/owner/repo")
+    success: bool = Field(..., description="Успешно ли выполнено удаление")
+    meta: MetaResponse
+    message: Optional[str] = Field(None, description="Дополнительное сообщение о результате операции")
+
+
 class IndexConfig(BaseModel):
     ast_chunker_config: Optional[AstChunkerConfig] = None
     ast_chunker_languages: List[Literal["python", "java", "typescript", "csharp"]] = Field(

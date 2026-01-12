@@ -1,4 +1,3 @@
-import os
 from src.enrichment.data_enrichment import DataEnrichment
 from src.search.search_engine import SearchEngine
 # TODO: from src.agent import CodeAgent
@@ -8,9 +7,10 @@ from src.core.schemas import (
     IndexConfig,
     QueryRequest,
     QueryResponse,
-    SearchConfig
+    SearchConfig,
+    DeleteResponse
 )
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict
 from src.utils.logger import get_logger
 
 
@@ -39,5 +39,19 @@ class Assistant:
             QueryRequest(**request),
             SearchConfig(**config)
         )
+        return response
+
+    async def delete_index(self, request: Dict[str, Any]) -> DeleteResponse:
+        "Функция удаления индекса репозитория."
+        index_request = IndexRequest(**request)
+        index_response = await self.enrichment.loader.clone_repository(index_request)
+        if index_response.meta.status == "error":
+            return DeleteResponse(
+                repo_url=index_request.repo_url,
+                success=False,
+                meta=index_response.meta,
+                message=index_response.job_status.description_error
+            )
+        response = await self.enrichment.delete_repo_index(index_response.repo_url)
         return response
 
