@@ -80,13 +80,15 @@ async def index_repo(repo_url: str) -> str:
         return "❌ **Ошибка:** Введите GitHub URL."
 
     request, config = _build_index_request(repo_url)
-    
+
     try:
         response = await assistant.index(request, config)
-        
+
         # Calculate duration
-        duration = (response.meta.end_datetime - response.meta.start_datetime).total_seconds()
-        
+        duration = (
+            response.meta.end_datetime - response.meta.start_datetime
+        ).total_seconds()
+
         # Build verbose response
         result = []
         result.append("## 📊 Результат индексации\n")
@@ -94,14 +96,19 @@ async def index_repo(repo_url: str) -> str:
         result.append(f"**Repository URL:** {response.repo_url}\n")
         result.append(f"**Время выполнения:** {duration:.2f} секунд\n")
         result.append(f"**Статус:** {response.meta.status}\n")
-        
+
         # Check if repo was already indexed
-        is_already_indexed = (response.job_status.description_error and 
-                             "already indexed" in response.job_status.description_error.lower())
-        
+        is_already_indexed = (
+            response.job_status.description_error
+            and "already indexed" in response.job_status.description_error.lower()
+        )
+
         if is_already_indexed:
             result.append("\n⚠️ **Репозиторий уже проиндексирован**\n")
-            result.append("Индексация была пропущена, так как репозиторий уже существует в базе данных.\n")
+            result.append(
+                "Индексация была пропущена, так как репозиторий "
+                "уже существует в базе данных.\n"
+            )
         else:
             # Show job status details
             if response.job_status.status:
@@ -110,28 +117,38 @@ async def index_repo(repo_url: str) -> str:
                     "loaded": "📥",
                     "parsed": "🔍",
                     "vectorized": "🧮",
-                    "saved_to_qdrant": "✅"
+                    "saved_to_qdrant": "✅",
                 }
                 emoji = status_emoji.get(response.job_status.status, "ℹ️")
-                result.append(f"\n**Статус задачи:** {emoji} {response.job_status.status}\n")
-            
+                result.append(
+                    f"\n**Статус задачи:** {emoji} {response.job_status.status}\n"
+                )
+
             # Show chunks processed
             if response.job_status.chunks_processed is not None:
-                result.append(f"**Обработано чанков:** {response.job_status.chunks_processed}\n")
-            
+                result.append(
+                    f"**Обработано чанков:** {response.job_status.chunks_processed}\n"
+                )
+
             # Show errors if any
             if response.meta.status == "error":
                 result.append("\n### ❌ Ошибка при индексации\n")
                 if response.job_status.description_error:
-                    result.append(f"**Описание ошибки:**\n```\n{response.job_status.description_error}\n```\n")
+                    result.append(
+                        f"**Описание ошибки:**\n```\n"
+                        f"{response.job_status.description_error}\n```\n"
+                    )
                 else:
                     result.append("Произошла ошибка во время индексации.\n")
             elif response.job_status.status == "saved_to_qdrant":
                 result.append("\n### ✅ Индексация завершена успешно\n")
-                result.append("Репозиторий успешно проиндексирован и сохранен в векторную базу данных.\n")
-        
+                result.append(
+                    "Репозиторий успешно проиндексирован и сохранен "
+                    "в векторную базу данных.\n"
+                )
+
         return "".join(result)
-        
+
     except Exception as e:
         return f"❌ **Критическая ошибка:** {type(e).__name__}: {str(e)}"
 
@@ -144,10 +161,12 @@ async def delete_index(repo_url: str) -> str:
 
     try:
         response = await assistant.delete_index(request)
-        
+
         # Calculate duration
-        duration = (response.meta.end_datetime - response.meta.start_datetime).total_seconds()
-        
+        duration = (
+            response.meta.end_datetime - response.meta.start_datetime
+        ).total_seconds()
+
         # Build verbose response
         result = []
         result.append("## 🗑️ Результат удаления индекса\n")
@@ -155,10 +174,12 @@ async def delete_index(repo_url: str) -> str:
         result.append(f"**Repository URL:** {response.repo_url}\n")
         result.append(f"**Время выполнения:** {duration:.2f} секунд\n")
         result.append(f"**Статус:** {response.meta.status}\n")
-        
+
         if response.success:
             result.append("\n### ✅ Удаление завершено успешно\n")
-            result.append("Индекс репозитория успешно удален из векторной базы данных.\n")
+            result.append(
+                "Индекс репозитория успешно удален из векторной базы данных.\n"
+            )
             if response.message:
                 result.append(f"\n**Сообщение:** {response.message}\n")
         else:
@@ -167,9 +188,9 @@ async def delete_index(repo_url: str) -> str:
                 result.append(f"**Описание ошибки:**\n```\n{response.message}\n```\n")
             else:
                 result.append("Произошла ошибка во время удаления индекса.\n")
-        
+
         return "".join(result)
-        
+
     except Exception as e:
         return f"❌ **Критическая ошибка:** {type(e).__name__}: {str(e)}"
 
@@ -230,7 +251,12 @@ def _normalize_history(history: list[dict] | None) -> list[dict]:
     out = []
     for m in history:
         if isinstance(m, dict) and "role" in m:
-            out.append({"role": str(m.get("role", "")), "content": _content_to_text(m.get("content"))})
+            out.append(
+                {
+                    "role": str(m.get("role", "")),
+                    "content": _content_to_text(m.get("content")),
+                }
+            )
     return out
 
 
@@ -251,10 +277,22 @@ async def chat(
     chatbot_history = _normalize_history(chatbot_history)
 
     if not repo_url:
-        return "Введите URL репозитория.", "Источники:\n- не найдено\n", [], history_state, chatbot_history
+        return (
+            "Введите URL репозитория.",
+            "Источники:\n- не найдено\n",
+            [],
+            history_state,
+            chatbot_history,
+        )
 
     if not message:
-        return "Введите вопрос.", "Источники:\n- не найдено\n", [], history_state, chatbot_history
+        return (
+            "Введите вопрос.",
+            "Источники:\n- не найдено\n",
+            [],
+            history_state,
+            chatbot_history,
+        )
 
     # Backend context: last 3 Q/A pairs (6 msgs) + new question
     context_messages = _last_pairs(history_state, pairs=3)
@@ -271,7 +309,13 @@ async def chat(
         response = await assistant.query(request, config)
         answer_text = (getattr(response, "answer", "") or "").strip()
     except Exception as e:
-        return f"Ошибка: {type(e).__name__}: {e}", "Источники:\n- не найдено\n", [], history_state, chatbot_history
+        return (
+            f"Ошибка: {type(e).__name__}: {e}",
+            "Источники:\n- не найдено\n",
+            [],
+            history_state,
+            chatbot_history,
+        )
 
     final_answer = answer_text or "Ответ пуст."
 
@@ -283,7 +327,9 @@ async def chat(
         {"role": "assistant", "content": final_answer},
     ]
 
-    new_history_state = request_messages + [{"role": "assistant", "content": final_answer}]
+    new_history_state = request_messages + [
+        {"role": "assistant", "content": final_answer}
+    ]
     new_history_state = _last_pairs(new_history_state, pairs=3)
 
     return sources_md, sources, new_history_state, chatbot_history
@@ -304,7 +350,9 @@ with gr.Blocks(title="RAGCode") as demo:
                 delete_button = gr.Button("Удалить индекс", variant="stop")
             index_status = gr.Markdown()
             index_button.click(index_repo, inputs=repo_url_input, outputs=index_status)
-            delete_button.click(delete_index, inputs=repo_url_input, outputs=index_status)
+            delete_button.click(
+                delete_index, inputs=repo_url_input, outputs=index_status
+            )
 
         with gr.Tab("Чат по коду"):
             chat_repo_url = gr.Textbox(label="URL репозитория")
@@ -313,7 +361,9 @@ with gr.Blocks(title="RAGCode") as demo:
 
             sources = gr.Markdown("Источники:\n- не найдено\n")
             message_input = gr.Textbox(label="Ваш вопрос")
-            show_sources = gr.Checkbox(label="Показывать содержимое источников", value=False)
+            show_sources = gr.Checkbox(
+                label="Показывать содержимое источников", value=False
+            )
 
             sources_state = gr.State([])
             history_state = gr.State([])
@@ -322,7 +372,13 @@ with gr.Blocks(title="RAGCode") as demo:
 
             send_button.click(
                 chat,
-                inputs=[chat_repo_url, message_input, show_sources, history_state, chatbot],
+                inputs=[
+                    chat_repo_url,
+                    message_input,
+                    show_sources,
+                    history_state,
+                    chatbot,
+                ],
                 outputs=[sources, sources_state, history_state, chatbot],
             )
 

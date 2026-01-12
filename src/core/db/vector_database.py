@@ -110,20 +110,20 @@ class VectorDBClient:
     ) -> Dict[str, Any]:
         """
         Удаляет точки из коллекции по фильтру.
-        
+
         Args:
             collection_name: Название коллекции
-            delete_filter: Фильтр для выбора точек для удаления (в формате QDrant filter)
-            
+            delete_filter: Фильтр для выбора точек для удаления (формат QDrant filter)
+
         Returns:
             Ответ от QDrant API
         """
         url = f"{self.db_url}/collections/{collection_name}/points/delete"
-        
+
         payload = {
             "filter": delete_filter,
         }
-        
+
         params = {"wait": "true"}
         headers = {"Content-Type": "application/json"}
         response = requests.post(url, params=params, headers=headers, json=payload)
@@ -166,8 +166,11 @@ class VectorDBClient:
         try:
             response = requests.put(url, headers=headers, json=payload)
             if response.status_code != 200:
-                self.logger.warning(
-                    f"Failed to create index for field '{field_name}' in '{collection_name}': {response.text}"
+                msg = (
+                    f"Failed to create index for field '{field_name}' in "
+                    f"'{collection_name}': {response.text}"
                 )
+                self.logger.warning(msg)
         except Exception as e:
+            msg = f"Error creating index for '{field_name}': {e}"
             self.logger.error(f"Error creating index for '{field_name}': {e}")

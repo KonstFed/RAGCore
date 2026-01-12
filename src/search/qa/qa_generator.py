@@ -44,9 +44,11 @@ class QAGenerator:
                 "sources": request.query.sources,
                 "llm_usage": {"prompt_tokens": 0, "completion_tokens": 0},
             }
-            self.logger.warning(
-                f"Finished qa pipeline because not config or enabled=false for request_id={request.meta.request_id}."
+            msg = (
+                "Finished qa pipeline because not config or enabled=false"
+                f"for request_id={request.meta.request_id}."
             )
+            self.logger.warning(msg)
             return QueryResponse(**response_dict)
 
         sources = request.query.sources or []

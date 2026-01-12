@@ -4,7 +4,7 @@ import requests
 import json
 from src.core.schemas import Chunk
 from typing import List, Dict, Any, Tuple
-from src.core.schemas import Chunk, IndexJobResponse
+from src.core.schemas import IndexJobResponse
 from src.utils.logger import get_logger
 
 
@@ -12,6 +12,7 @@ class EmbeddingModel:
     """
     Класс для векторизации текста.
     """
+
     def __init__(self, cfg: DictConfig) -> None:
         self.logger = get_logger(self.__class__.__name__)
         self.provider = getattr(cfg.embeddings, "default_provider", "jina")
@@ -22,34 +23,35 @@ class EmbeddingModel:
         self.dump_dir = cfg.paths.temp_chunks_storage
 
     async def vectorize(
-        self,
-        chunks: List[Chunk],
-        index_response: IndexJobResponse
+        self, chunks: List[Chunk], index_response: IndexJobResponse
     ) -> Tuple[IndexJobResponse, List[Dict[str, Any]]]:
         """
-        Принимает список чанков, возвращает структуру готовую для вставки в Векторную БД.
+        Принимает список чанков,
+        возвращает структуру готовую для вставки в Векторную БД.
         Формат возврата: List[{id: uuid, vector: list, payload: dict}]
         """
         vectors_data = []
 
         texts = [chunk.content for chunk in chunks]
 
-        self.logger.info(f"Start vectorize chunks for request_id={index_response.meta.request_id}.")
+        self.logger.info(
+            f"Start vectorize chunks for request_id={index_response.meta.request_id}."
+        )
 
         try:
             embeddings = self.embed_chunks(texts)
 
             for chunk, vector in zip(chunks, embeddings):
-                payload = chunk.metadata.model_dump(mode='json')
+                payload = chunk.metadata.model_dump(mode="json")
 
-                payload['repo_url'] = str(index_response.repo_url)
-                payload['request_id'] = str(index_response.meta.request_id)
-                payload['content'] = chunk.content
+                payload["repo_url"] = str(index_response.repo_url)
+                payload["request_id"] = str(index_response.meta.request_id)
+                payload["content"] = chunk.content
 
                 vector_record = {
                     "id": str(chunk.metadata.chunk_id),
                     "vector": vector,
-                    "payload": payload
+                    "payload": payload,
                 }
                 vectors_data.append(vector_record)
 
@@ -58,9 +60,17 @@ class EmbeddingModel:
             index_response.job_status.status = "vectorized"
             index_response.meta.status = "done"
             index_response.job_status.chunks_processed = len(vectors_data)
-            self.logger.info(f"Successful done vectorize chunks for request_id={index_response.meta.request_id}.")
+            msg = (
+                f"Successful done vectorize chunks for "
+                f"request_id={index_response.meta.request_id}."
+            )
+            self.logger.info(msg)
         except Exception as e:
-            self.logger.error(f"Error vectorize chunks for request_id={index_response.meta.request_id} with body: {e}")
+            msg = (
+                f"Error vectorize chunks for "
+                f"request_id={index_response.meta.request_id} with body: {e}"
+            )
+            self.logger.error(msg)
             index_response.job_status.status = "vectorized"
             index_response.meta.status = "error"
             return index_response, []
@@ -73,12 +83,16 @@ class EmbeddingModel:
 
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
+            "Authorization": f"Bearer {self.api_key}",
         }
 
         for batch_num, i in enumerate(range(0, len(texts), self.batch_size)):
             total_batches = (len(texts) + self.batch_size - 1) // self.batch_size
-            self.logger.debug(f"Processing batch {batch_num+1}/{total_batches} with batch_size {self.batch_size}.")
+            msg = (
+                f"Processing batch {batch_num + 1}/{total_batches} with "
+                f"batch_size {self.batch_size}."
+            )
+            self.logger.debug(msg)
             batch_texts = texts[i : i + self.batch_size]
 
             if self.provider == "openrouter":
@@ -91,22 +105,31 @@ class EmbeddingModel:
                     "model": self.model_name,
                     "task": "nl2code.passage",
                     "truncate": True,
-                    "input": batch_texts[9:11]
+                    "input": batch_texts[9:11],
                 }
             try:
-                response = requests.post(self.url, headers=headers, data=json.dumps(data))
+                response = requests.post(
+                    self.url, headers=headers, data=json.dumps(data)
+                )
                 response.raise_for_status()
 
                 response_data = response.json()
 
-                if 'data' in response_data:
-                    batch_embeddings = [r.get('embedding') for r in response_data['data']]
+                if "data" in response_data:
+                    batch_embeddings = [
+                        r.get("embedding") for r in response_data["data"]
+                    ]
                     all_embeddings.extend(batch_embeddings)
                 else:
-                    self.logger.error(f"Unexpected response format for batch starting at index {i}: {response_data}")
+                    msg = (
+                        f"Unexpected response format for batch starting at index "
+                        f"{i}: {response_data}"
+                    )
+                    self.logger.error(msg)
 
             except requests.exceptions.RequestException as e:
-                self.logger.error(f"Request failed for batch starting at index {i}: {e}")
+                msg = f"Request failed for batch starting at index {i}: {e}"
+                self.logger.error(msg)
 
         return all_embeddings
 
@@ -114,7 +137,7 @@ class EmbeddingModel:
         """Векторизует пользовательский запрос."""
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
+            "Authorization": f"Bearer {self.api_key}",
         }
         if self.provider == "openrouter":
             data = {
@@ -126,16 +149,22 @@ class EmbeddingModel:
                 "model": self.model_name,
                 "task": "nl2code.query",
                 "truncate": True,
-                "input": texts
+                "input": texts,
             }
         response = requests.post(self.url, headers=headers, data=json.dumps(data))
         if response.status_code != 200:
-            self.logger.error(f"Failed to get embedding for query: status={response.status_code}, response={response.text}")
+            msg = (
+                f"Failed to get embedding for query: "
+                f"status={response.status_code}, response={response.text}"
+            )
+            self.logger.error(msg)
             return [[]]
-        self.logger.info(f"Successfuly embedded user question")
-        return [r.get('embedding') for r in response.json()['data']]
+        self.logger.info("Successfuly embedded user question")
+        return [r.get("embedding") for r in response.json()["data"]]
 
-    def _save_chunks_locally(self, chunks: List[Dict[str, Any]], request_id: str) -> None:
+    def _save_chunks_locally(
+        self, chunks: List[Dict[str, Any]], request_id: str
+    ) -> None:
         """
         Сериализует список чанков в JSON и сохраняет на диск.
         Возвращает путь к созданному файлу.
@@ -147,9 +176,10 @@ class EmbeddingModel:
             filename = f"{request_id}.json"
             file_path = output_dir / filename
 
-
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(chunks, f, ensure_ascii=False, indent=2)
 
         except Exception as e:
-            self.logger.error(f"Failed to save chunks locally for request_id={request_id}: {e}")
+            self.logger.error(
+                f"Failed to save chunks locally for request_id={request_id}: {e}"
+            )

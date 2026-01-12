@@ -12,6 +12,7 @@ class Reranker:
     Класс переранжирования (Reranking).
     Сортирует найденные чанки по релевантности с помощью Cross-Encoder модели.
     """
+
     def __init__(self, cfg: DictConfig) -> None:
         self.logger = get_logger(self.__class__.__name__)
         self.model_name = cfg.reranker.model_name
@@ -22,15 +23,27 @@ class Reranker:
         self.fallback_message = cfg.reranker.fallback_message
         self.timeout = cfg.reranker.timeout
 
-    async def pipeline(self, request: QueryRequest, config: SearchConfig) -> Union[QueryRequest, QueryResponse]:
-        self.logger.info(f"Run reranker pipeline for request_id={request.meta.request_id}.")
+    async def pipeline(
+        self, request: QueryRequest, config: SearchConfig
+    ) -> Union[QueryRequest, QueryResponse]:
+        self.logger.info(
+            f"Run reranker pipeline for request_id={request.meta.request_id}."
+        )
 
         if not config or not config.reranker or not config.reranker.enabled:
-            self.logger.warning(f"Finished reranker pipeline because no config or enabled=False for request_id={request.meta.request_id}.")
+            msg = (
+                "Finished reranker pipeline because no config or enabled=False "
+                f"for request_id={request.meta.request_id}."
+            )
+            self.logger.warning(msg)
             return request
 
         if not request.query.sources:
-            self.logger.warning(f"Finished reranker pipeline because no chunks for request_id={request.meta.request_id}.")
+            msg = (
+                "Finished reranker pipeline because no chunks "
+                f"for request_id={request.meta.request_id}."
+            )
+            self.logger.warning(msg)
             return request
 
         config = config.reranker
@@ -39,10 +52,11 @@ class Reranker:
 
         status_code, response_json = self._rerank(query, documents_text, config)
         if status_code != 200:
-            self.logger.warning(
-                f"Reranker API returned {status_code} for request_id={request.meta.request_id}. "
-                f"Skipping rerank step."
+            msg = (
+                f"Reranker API returned {status_code} for "
+                f"request_id={request.meta.request_id}. Skipping rerank step."
             )
+            self.logger.warning(msg)
             return request
 
         filtered_sources = []
@@ -52,7 +66,9 @@ class Reranker:
                 idx = item["index"]
                 score = item["relevance_score"]
 
-                current_threshold = config.threshold if config.threshold is not None else self.threshold
+                current_threshold = (
+                    config.threshold if config.threshold is not None else self.threshold
+                )
 
                 if score < current_threshold:
                     continue
@@ -66,17 +82,21 @@ class Reranker:
             response_dict = {
                 "meta": {
                     "request_id": request.meta.request_id,
-                    "start_datetime": datetime.now(), # будет перезаписано
-                    "start_datetime": datetime.now(),
-                    "status": "done"
+                    "start_datetime": datetime.now(),  # будет перезаписано
+                    "end_datetime": datetime.now(),
+                    "status": "done",
                 },
                 "status": "preprocessor_filtering",
                 "messages": request.query.messages,
                 "answer": self.fallback_message,
                 "sources": filtered_sources,
-                "llm_usage": {"prompt_tokens": 0, "completion_tokens": 0}
+                "llm_usage": {"prompt_tokens": 0, "completion_tokens": 0},
             }
-            self.logger.warning(f"Reranker filtered out all the chunks for request_id={request.meta.request_id}.")
+            msg = (
+                "Reranker filtered out all the chunks for "
+                f"request_id={request.meta.request_id}."
+            )
+            self.logger.warning(msg)
             return QueryResponse(**response_dict)
 
         request.query.sources = filtered_sources
@@ -88,27 +108,26 @@ class Reranker:
         )
         return request
 
-    def _rerank(self, query: str, documents: List[str], config: RerankerConfig) -> Tuple[int, Dict[str, Any]]:
+    def _rerank(
+        self, query: str, documents: List[str], config: RerankerConfig
+    ) -> Tuple[int, Dict[str, Any]]:
         """
         Отправляет запрос к Jina Reranker API.
         """
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
+            "Authorization": f"Bearer {self.api_key}",
         }
         data = {
             "model": config.model_name or self.model_name,
             "query": query,
             "top_n": config.top_k or self.top_k,
             "documents": documents,
-            "return_documents": False
+            "return_documents": False,
         }
         try:
             response = requests.post(
-                self.url,
-                headers=headers,
-                data=json.dumps(data),
-                timeout=self.timeout
+                self.url, headers=headers, data=json.dumps(data), timeout=self.timeout
             )
             return response.status_code, response.json()
         except Exception as e:

@@ -47,7 +47,8 @@ class Retriever:
 
         query_vector = self.embedder.embed_query([query_text])[0]
 
-        # Always scope search to the requested repo_url (otherwise sources may come from other repos in the same collection)
+        # Always scope search to the requested repo_url
+        # (otherwise sources may come from other repos in the same collection)
         must_conditions: List[Dict[str, Any]] = [
             {"key": "repo_url", "match": {"value": str(request.repo_url)}}
         ]
@@ -59,7 +60,8 @@ class Retriever:
 
         qdrant_filter: Dict[str, Any] = {"must": must_conditions}
         if user_filter:
-            # If user_filter already looks like a root filter, merge it; else treat it as a single condition.
+            # If user_filter already looks like a root filter, merge it;
+            # else treat it as a single condition.
             if any(k in user_filter for k in ("must", "should", "must_not")):
                 if isinstance(user_filter.get("must"), list):
                     qdrant_filter["must"].extend(user_filter["must"])
@@ -190,7 +192,6 @@ class Retriever:
         )
 
         range_condition = {}
-        sort_desc = False
 
         if direction == "before":
             # Ищем чанки, где end_line_no < текущего start_line_no
@@ -201,7 +202,8 @@ class Retriever:
             }
             # QDrant scroll не поддерживает сортировку напрямую так, как search.
             # Но мы можем использовать фильтр.
-            # Для точного порядка "ближайший сосед" в QDrant нужен order_by (доступен в v1.10+).
+            # Для точного порядка "ближайший сосед"
+            # в QDrant нужен order_by (доступен в v1.10+).
             # Если версия старая, можно запросить больше и отсортировать в коде.
         else:
             range_condition = {

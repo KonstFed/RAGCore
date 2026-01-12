@@ -7,7 +7,12 @@ from omegaconf import DictConfig
 from astchunk import ASTChunkBuilder
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from src.core.schemas import IndexRequest, Chunk, ChunkMetadata, IndexConfig, IndexJobResponse
+from src.core.schemas import (
+    Chunk,
+    ChunkMetadata,
+    IndexConfig,
+    IndexJobResponse,
+)
 from src.utils.logger import get_logger
 
 
@@ -39,7 +44,8 @@ class RepoParser:
         if config.ast_chunker_config:
             for language in config.ast_chunker_languages:
                 ast_chunker_map[language] = ASTChunkBuilder(
-                    language=language, **config.ast_chunker_config.model_dump(),
+                    language=language,
+                    **config.ast_chunker_config.model_dump(),
                 )
 
         # init text splitter for non-AST languages
@@ -51,7 +57,11 @@ class RepoParser:
         )
 
         repo_path = index_job_response.job_status.repo_path
-        self.logger.info(f"Start parsing repository {repo_path} for request_id={index_job_response.meta.request_id}.")
+        msg = (
+            "Start parsing repository {repo_path} "
+            f"for request_id={index_job_response.meta.request_id}."
+        )
+        self.logger.info(msg)
 
         for root, dirs, files in os.walk(repo_path):
             dirs[:] = [d for d in dirs if not self._is_excluded(d, exclude_patterns)]
@@ -68,11 +78,21 @@ class RepoParser:
                 )
                 chunks.extend(file_chunks)
 
-        self.logger.info(f"Successful done parsing repository {repo_path} for request_id={index_job_response.meta.request_id}.")
+        msg = (
+            "Successful done parsing repository {repo_path} "
+            f"for request_id={index_job_response.meta.request_id}."
+        )
+        self.logger.info(msg)
         index_job_response.job_status.status = "parsed"
 
-        chunks_path = self._save_chunks_locally(chunks, str(index_job_response.meta.request_id))
-        self.logger.info(f"Successful dump chunks into local storage: {chunks_path} for request_id={index_job_response.meta.request_id}")
+        _chunks_path = self._save_chunks_locally(
+            chunks, str(index_job_response.meta.request_id)
+        )
+        msg = (
+            "Successful dump chunks into local storage: {chunks_path} "
+            f"for request_id={index_job_response.meta.request_id}"
+        )
+        self.logger.info(msg)
 
         return index_job_response, chunks
 
@@ -125,9 +145,7 @@ class RepoParser:
 
         if language in ast_chunker_map:
             # use AST chunker if language match
-            return self._chunk_ast(
-                content, relative_path, ast_chunker_map[language]
-            )
+            return self._chunk_ast(content, relative_path, ast_chunker_map[language])
         else:
             # default use lanchain text splitter
             return self._chunk_langchain(
@@ -171,8 +189,8 @@ class RepoParser:
                 end_line = start_line + len(chunk_lines) - 1
             else:
                 # Точный подсчет строк
-                start_line = content[:chunk_start_pos].count('\n') + 1
-                end_line = content[:chunk_start_pos + len(chunk_text)].count('\n')
+                start_line = content[:chunk_start_pos].count("\n") + 1
+                end_line = content[: chunk_start_pos + len(chunk_text)].count("\n")
                 current_pos = chunk_start_pos + len(chunk_text)
 
             chunk_lines = chunk_text.splitlines()

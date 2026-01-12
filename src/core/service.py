@@ -3,13 +3,13 @@ from dotenv import load_dotenv
 from omegaconf import OmegaConf, DictConfig
 import os
 from src.utils.logger import LoggerSetup, get_logger
-from typing import Any, Dict, List, Tuple
 
 
 class BaseService(ABC):
     """
     Базовый класс сервиса, отвечающий за инициализацию конфигурации.
     """
+
     def __init__(self, config_path: str = "config/deployment_config.yaml"):
         config_dir = os.path.dirname(config_path) or "configs"
         logging_conf_path = os.path.join(config_dir, "logging.yaml")
@@ -39,7 +39,7 @@ class BaseService(ABC):
         env_vars_list = []
         for key, value in os.environ.items():
             if key.startswith(prefix):
-                clean_key = key[len(prefix):]
+                clean_key = key[len(prefix) :]
                 conf_key = clean_key.replace("__", ".").lower()
                 env_vars_list.append(f"{conf_key}={value}")
         env_conf = OmegaConf.from_dotlist(env_vars_list)

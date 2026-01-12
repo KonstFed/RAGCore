@@ -13,7 +13,8 @@ from src.search.qa import QAGenerator
 class SearchEngine(BaseService):
     """
     Класс отвечает за поиск и генерацию ответа (`/query`).
-    Пайплайн: Preprocess -> QueryRewrite -> Retrieve -> Rerank -> ContextExpansion -> QA (LLM) -> Postprocess.
+    Пайплайн: Preprocess -> QueryRewrite -> Retrieve ->
+    -> Rerank -> ContextExpansion -> QA (LLM) -> Postprocess.
     """
 
     def __init__(self, config_path: str = "configs/deployment_config.yaml"):
