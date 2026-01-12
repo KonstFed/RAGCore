@@ -10,6 +10,7 @@ class ChunkerConfig(BaseModel):
 
     extensions: list[str] = Field(default_factory=list)
 
+
 class Metadata(BaseModel):
     filepath: str
     chunk_size: int
@@ -17,6 +18,7 @@ class Metadata(BaseModel):
     start_line_no: int
     end_line_no: int
     node_count: int
+
 
 class Chunk(BaseModel):
     content: str

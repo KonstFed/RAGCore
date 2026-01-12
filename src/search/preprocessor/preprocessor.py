@@ -1,13 +1,13 @@
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Tuple, Union
+from typing import Union
 from omegaconf import DictConfig
 from src.core.schemas import (
     QueryRequest,
     QueryResponse,
     SearchConfig,
     ContentBlockingSettings,
-    TextSanitizationSettings
+    TextSanitizationSettings,
 )
 from src.utils.logger import get_logger
 
@@ -15,16 +15,23 @@ from src.utils.logger import get_logger
 class Preprocessor:
     """
     Класс предварительной обработки запроса.
-    Отвечает за нормализацию текста, удаление чувствительных данных и блокировку запрещенного контента.
+
+    Отвечает за нормализацию текста, удаление чувствительных данных
+    и блокировку запрещенного контента.
     """
+
     def __init__(self, cfg: DictConfig) -> None:
         self.logger = get_logger(self.__class__.__name__)
         self.fallback_message = cfg.preprocessor.fallback_message
 
-    def pipeline(self, request: QueryRequest, config: SearchConfig) -> Union[QueryRequest, QueryResponse]:
+    def pipeline(
+        self, request: QueryRequest, config: SearchConfig
+    ) -> Union[QueryRequest, QueryResponse]:
         if not config or not config.query_preprocessor:
             return request
-        self.logger.info(f"Run preprocessor pipeline for request_id={request.meta.request_id}.")
+        self.logger.info(
+            f"Run preprocessor pipeline for request_id={request.meta.request_id}."
+        )
 
         config = config.query_preprocessor
 
@@ -37,15 +44,16 @@ class Preprocessor:
                 response_dict = {
                     "meta": {
                         "request_id": request.meta.request_id,
-                        "start_datetime": datetime.now(), # будет перезаписано
-                        "end_datetime": datetime.now(), # будет перезаписано
-                        "status": "done"
+                        "start_datetime": datetime.now(),  # будет перезаписано
+                        "end_datetime": datetime.now(),  # будет перезаписано
+                        "status": "done",
                     },
                     "status": "preprocessor_filtering",
                     "messages": request.query.messages,
-                    "answer": config.blacklist.fallback_message or self.fallback_message,
+                    "answer": config.blacklist.fallback_message
+                    or self.fallback_message,
                     "sources": [],
-                    "llm_usage": {"prompt_tokens": 0, "completion_tokens": 0}
+                    "llm_usage": {"prompt_tokens": 0, "completion_tokens": 0},
                 }
                 self.logger.warning("Blacklist triggered. Returning filtered response.")
                 return QueryResponse(**response_dict)
@@ -56,7 +64,7 @@ class Preprocessor:
 
         # 3. Max length crop
         if config.max_length and len(content) > config.max_length:
-            content = content[:config.max_length]
+            content = content[: config.max_length]
 
         # 4. Custom substitutions
         if config.custom_substitutions:
@@ -69,8 +77,11 @@ class Preprocessor:
 
         last_message.content = content
         request.query.messages[-1] = last_message
-
-        self.logger.info(f"Successful finished preprocessor pipeline for request_id={request.meta.request_id}.")
+        msg = (
+            "Successful finished preprocessor pipeline "
+            f"for request_id={request.meta.request_id}."
+        )
+        self.logger.info(msg)
         return request
 
     def _check_blacklist(self, text: str, settings: ContentBlockingSettings) -> bool:

@@ -3,9 +3,8 @@ from src.core.schemas import (
     SearchConfig,
     QueryResponse,
     ContentBlockingSettings,
-    TextSanitizationSettings
+    TextSanitizationSettings,
 )
-from typing import Any, Dict, List, Tuple
 from src.utils.logger import get_logger
 from omegaconf import DictConfig
 
@@ -15,12 +14,15 @@ class Postprocessor:
     Класс постобработки ответа.
     Форматирование Markdown, добавление цитат, очистка.
     """
+
     def __init__(self, cfg: DictConfig) -> None:
         self.logger = get_logger(self.__class__.__name__)
         self.fallback_message = cfg.postprocessor.fallback_message
 
     def pipeline(self, response: QueryResponse, config: SearchConfig) -> QueryResponse:
-        self.logger.info(f"Run postprocessor pipeline for request_id={response.meta.request_id}.")
+        self.logger.info(
+            f"Run postprocessor pipeline for request_id={response.meta.request_id}."
+        )
         if not config or not config.query_postprocessor:
             return response
 
@@ -54,18 +56,19 @@ class Postprocessor:
                 citations = "\n\n**Sources:**\n"
                 unique_files = set()
                 for chunk in sources:
-                    # chunk может быть объектом Chunk или словарем, если произошла сериализация
-                    if hasattr(chunk, 'metadata'):
+                    # chunk может быть объектом Chunk или словарем,
+                    # если произошла сериализация
+                    if hasattr(chunk, "metadata"):
                         meta = chunk.metadata
                         name = meta.file_name
                         path = meta.filepath
                     elif isinstance(chunk, dict):
-                        meta = chunk.get('metadata', {})
-                        name = meta.get('file_name', 'unknown')
-                        path = meta.get('filepath', 'unknown')
+                        meta = chunk.get("metadata", {})
+                        name = meta.get("file_name", "unknown")
+                        path = meta.get("filepath", "unknown")
                     else:
                         continue
-                    
+
                     if path not in unique_files:
                         citations += f"- [{name}]({path})\n"
                         unique_files.add(path)
@@ -74,7 +77,11 @@ class Postprocessor:
 
         response.answer = answer
 
-        self.logger.info(f"Successful finished postprocessor pipeline for request_id={response.meta.request_id}.")
+        msg = (
+            "Successful finished postprocessor pipeline "
+            f"for request_id={response.meta.request_id}."
+        )
+        self.logger.info(msg)
         return response
 
     def _check_blacklist(self, text: str, settings: ContentBlockingSettings) -> bool:
