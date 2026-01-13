@@ -74,8 +74,10 @@ async def index_repositories(
                 print(f"  Successfully indexed {repo_url_with_commit}")
                 indexed_repos.add(repo_url_with_commit)
             else:
-                msg = (f"  Failed to index {repo_url_with_commit}: "
-                f"{response.job_status.description_error}")
+                msg = (
+                    f"  Failed to index {repo_url_with_commit}: "
+                    f"{response.job_status.description_error}"
+                )
                 print(msg)
 
         except Exception as e:
