@@ -31,7 +31,8 @@ jobs:
 
             bash docker/stop.sh || true
             bash docker/build.sh
+            docker compose -f docker/docker-compose.yml up -d
             docker container prune -f
             docker image prune -f
             docker builder prune -f
-            bash docker/run.sh
+
