@@ -13,6 +13,13 @@ from src.core.schemas import (
 )
 from typing import Any, Dict
 from src.utils.logger import get_logger
+from src.utils.github import resolve_full_github_url
+from functools import lru_cache
+
+
+@lru_cache(maxsize=512)
+def _cached_url_resolver(url: str) -> tuple[str, str, str, str]:
+    return resolve_full_github_url(url)
 
 
 class Assistant:
@@ -36,6 +43,9 @@ class Assistant:
         self, request: Dict[str, Any], config: Dict[str, Any]
     ) -> QueryResponse:
         "Функция генерации ответа на вопрос пользователя."
+        _, _, base_url, commit_hash = _cached_url_resolver(request["repo_url"])
+        url = f"{base_url}/tree/{commit_hash}"
+        request["repo_url"] = url
         response = await self.searcher.predict(
             QueryRequest(**request), SearchConfig(**config)
         )
