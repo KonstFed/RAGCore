@@ -1,0 +1,80 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+database:
+  url: "${oc.env:QDRANT_URL, 'http://localhost:6333'}"
+  collection_name: "github_code_chunks"
+  top_k: 3
+  batch_size: 50
+
+embeddings:
+  default_provider: "openrouter"
+  url: "https://openrouter.ai/api/v1/embeddings"
+  api_key: "${oc.env:OPENROUTER_API_KEY, ''}"
+  model_name: "qwen/qwen3-embedding-8b" # "baai/bge-base-en-v1.5"
+  dimension: 4096 # 768
+  distance: "Cosine"
+  batch_size: 100
+  # Локальная CPU-модель для fallback (Sentence-Transformers)
+  local_model: "flax-sentence-embeddings/st-codesearch-distilroberta-base"
+
+paths:
+  temp_chunks_storage: "/tmp/chunks"
+  temp_repo_storage: "/tmp/repos"
+  openapi_spec: "api/api.yaml"
+
+parser:
+  # NOTE: exclude patterns are matched against both filename and relative path.
+  # Keep this list conservative; you can override/extend it per IndexConfig.exclude_patterns.
+  default_exclude:
+    - ".git"
+    - "__pycache__"
+    - "*.lock"
+    - "*.png"
+    - "*.jpg"
+    - "*.ipynb"
+    - "node_modules"
+    # Common ignore/config noise (often hurts retrieval quality)
+    - ".gitignore"
+    - ".ignore"
+    - "*.ignore"
+    - ".dockerignore"
+    - ".gitattributes"
+  extension_map:
+    .py: "python"
+    .js: "javascript"
+    .ts: "typescript"
+    .java: "java"
+    .go: "go"
+    .cpp: "cpp"
+    .cs: "csharp"
+
+preprocessor:
+  fallback_message: "К сожалению, на данный вопрос я пока не могу ответить. Попробуйте переформулировать Ваш вопрос."
+
+postprocessor:
+  fallback_message: "К сожалению, LLM сгенерировала запрещённый контент. Попробуйте переформулировать Ваш вопрос."
+
+reranker:
+  model_name: "jina-reranker-v3"
+  threshold: 0.5
+  top_k: 3
+  url: "https://api.jina.ai/v1/rerank"
+  api_key: "${oc.env:JINA_API_KEY, 'sk-placeholder'}"
+  fallback_message: "Все источники были отфильтрованы моделью ранжирования."
+  timeout: 10
+
+qa:
+  fallback_message: "Стандартная заглушка при выключенном модуле QA LLM."
+
+# Конфигурация LLM
+llm:
+  provider: "openrouter"
+  base_url: "https://openrouter.ai/api/v1"
+  api_key: "${oc.env:OPENROUTER_API_KEY, ''}"
+  model_name: "openai/gpt-oss-120b"
+  parameters:
+    temperature: 0.3
+    top_p: 0.95
+    max_tokens: 1024
