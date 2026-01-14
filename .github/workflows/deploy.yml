@@ -1,0 +1,33 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          env:
+            JINA_API_KEY: ${{ secrets.JINA_API_KEY }}
+            OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH || '/opt/ragcore' }}
+            git fetch origin
+            git reset --hard origin/${{ github.ref_name }}
+            # Create .env file in docker folder
+            cat > docker/.env << EOF
+            JINA_API_KEY=${JINA_API_KEY}
+            OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+            EOF
+            bash docker/stop.sh || true
+            bash docker/build.sh
+            bash docker/run.sh
