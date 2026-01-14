@@ -30,4 +30,7 @@ jobs:
             EOF
             bash docker/stop.sh || true
             bash docker/build.sh
+            docker container prune -f
+            docker image prune -f
+            docker builder prune -f
             bash docker/run.sh
