@@ -92,6 +92,12 @@ class Retriever:
 
         found_chunks = []
         if "result" in search_result:
+            if len(search_result["result"]) == 0:
+                self.logger.warning(
+                    f"No chunks found for request_id={request.meta.request_id} in repo {request.repo_url}."
+                )
+                return request
+
             for item in search_result["result"]:
                 score = item.get("score", 0.0)
                 payload = item.get("payload", {})
