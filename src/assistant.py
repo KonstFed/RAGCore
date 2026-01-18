@@ -1,8 +1,9 @@
 from src.enrichment.data_enrichment import DataEnrichment
 from src.search.search_engine import SearchEngine
 
-# TODO: from src.agent import CodeAgent
+from src.agent import Agent
 from src.core.schemas import (
+    AgentConfig,
     IndexRequest,
     IndexJobResponse,
     IndexConfig,
@@ -28,7 +29,7 @@ class Assistant:
 
         self.enrichment = DataEnrichment(service_cfg_path)
         self.searcher = SearchEngine(service_cfg_path)
-        # self.agent = CodeAgent(service_cfg_path)
+        self.agent = Agent(service_cfg_path)
 
     async def index(
         self, request: Dict[str, Any], config: Dict[str, Any]
@@ -63,4 +64,16 @@ class Assistant:
                 message=index_response.job_status.description_error,
             )
         response = await self.enrichment.delete_repo_index(index_response.repo_url)
+        return response
+
+    async def deep_research(
+        self, request: Dict[str, Any], config: Dict[str, Any]
+    ) -> QueryResponse:
+        "Функция углубленного поиска с помощоью Агента."
+        _, _, base_url, commit_hash = _cached_url_resolver(request["repo_url"])
+        url = f"{base_url}/tree/{commit_hash}"
+        request["repo_url"] = url
+        response = await self.agent.predict(
+            QueryRequest(**request), AgentConfig(**config)
+        )
         return response
