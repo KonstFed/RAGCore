@@ -433,3 +433,136 @@ class QueryResponse(BaseModel):
         None, description="Список чанков, использованных для генерации ответа."
     )
     llm_usage: LLMUsageObject
+
+
+class AgentConfig(BaseModel):
+    """Конфигурация агента для углубленного поиска."""
+
+    max_iterations: int = Field(
+        5,
+        ge=1,
+        le=20,
+        description="Максимальное количество итераций поиска."
+    )
+    max_time_seconds: float = Field(
+        120.0,
+        ge=10.0,
+        le=600.0,
+        description="Максимальное время работы агента в секундах."
+    )
+    confidence_threshold: float = Field(
+        0.7,
+        ge=0.0,
+        le=1.0,
+        description="Порог уверенности для остановки поиска."
+    )
+    min_relevant_chunks: int = Field(
+        3,
+        ge=1,
+        description="Минимальное количество релевантных чанков для успешного завершения."
+    )
+    relevance_score_threshold: float = Field(
+        0.5,
+        ge=0.0,
+        le=1.0,
+        description="Минимальный score чанка для признания его релевантным."
+    )
+    llm_config: Optional[LLMConfig] = Field(
+        None,
+        description="Конфигурация LLM для анализа и принятия решений агентом."
+    )
+    initial_search_config: Optional[SearchConfig] = Field(
+        None,
+        description="Начальная конфигурация поиска."
+    )
+    enable_query_refinement: bool = Field(
+        True,
+        description="Разрешить агенту переформулировать запрос."
+    )
+    enable_filter_adjustment: bool = Field(
+        True,
+        description="Разрешить агенту настраивать фильтры."
+    )
+    enable_retriever_adjustment: bool = Field(
+        True,
+        description="Разрешить агенту настраивать параметры ретривера."
+    )
+    generate_final_answer: bool = Field(
+        True,
+        description="Генерировать финальный ответ с помощью LLM."
+    )
+
+
+class SearchAdjustments(BaseModel):
+    """Корректировки параметров поиска."""
+
+    retriever_size: Optional[int] = Field(None, ge=1, le=50)
+    retriever_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
+    bm25_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
+    reranker_top_k: Optional[int] = Field(None, ge=1, le=20)
+    reranker_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
+
+
+class FilterAdjustments(BaseModel):
+    """Корректировки фильтров поиска."""
+
+    include_filepaths: Optional[List[str]] = Field(
+        None, description="Паттерны путей файлов для включения (wildcard)."
+    )
+    exclude_filepaths: Optional[List[str]] = Field(
+        None, description="Паттерны путей файлов для исключения."
+    )
+    languages: Optional[List[str]] = Field(
+        None, description="Языки программирования для фильтрации."
+    )
+    file_extensions: Optional[List[str]] = Field(
+        None, description="Расширения файлов для поиска."
+    )
+
+
+class AgentAction(BaseModel):
+    """Решение агента после анализа результатов."""
+
+    action_type: Literal[
+        "stop_success",      # Достаточно хорошие результаты
+        "stop_limit",        # Достигнут лимит
+        "refine_query",      # Переформулировать запрос
+        "adjust_filters",    # Изменить фильтры
+        "expand_search",     # Расширить параметры поиска
+        "narrow_search",     # Сузить параметры поиска
+        "combined_action"    # Комбинация действий
+    ]
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    reasoning: str = Field(..., description="Объяснение принятого решения.")
+    refined_query: Optional[str] = Field(None, description="Уточненный запрос.")
+    search_adjustments: Optional[SearchAdjustments] = None
+    filter_adjustments: Optional[FilterAdjustments] = None
+    focus_areas: Optional[List[str]] = Field(
+        None, description="Области кода, на которые стоит обратить внимание."
+    )
+
+
+class IterationResult(BaseModel):
+    """Результат одной итерации поиска."""
+
+    iteration: int
+    query_used: str
+    chunks_found: int
+    relevant_chunks_count: int
+    avg_relevance_score: float
+    max_relevance_score: float
+    action: AgentAction
+    duration_seconds: float
+    search_config_snapshot: Dict[str, Any]
+
+
+class AgentState(BaseModel):
+    """Внутреннее состояние агента."""
+
+    current_query: str
+    original_query: str
+    search_config: SearchConfig
+    iterations: List[IterationResult] = Field(default_factory=list)
+    all_chunks: List[Chunk] = Field(default_factory=list)
+    seen_chunk_ids: set = Field(default_factory=set)
+    start_time: float = 0.0
